@@ -3794,7 +3794,7 @@
 		)
 		(uuid "fcbfa23d-004f-4ae3-adf0-7bc02bd2a262")
 	)
-	(global_label "TEMP_SENCE"
+	(global_label "TEMP_SENSE"
 		(shape input)
 		(at 210.82 97.79 180)
 		(fields_autoplaced yes)
@@ -3806,7 +3806,7 @@
 		)
 		(uuid "0966f3a6-28e3-4303-88d6-6398838dee62")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 195.9212 97.79 0)
+			(at 195.9817 97.79 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -3838,7 +3838,7 @@
 			)
 		)
 	)
-	(global_label "V_SENCE"
+	(global_label "V_SENSE"
 		(shape input)
 		(at 160.02 99.06 180)
 		(fields_autoplaced yes)
@@ -3850,7 +3850,7 @@
 		)
 		(uuid "1c96ed94-683e-4a2e-8bcd-10c932ee29cf")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 148.8706 99.06 0)
+			(at 148.9311 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4278,7 +4278,7 @@
 			)
 		)
 	)
-	(global_label "TEMP_SENCE"
+	(global_label "TEMP_SENSE"
 		(shape input)
 		(at 48.26 121.92 180)
 		(fields_autoplaced yes)
@@ -4290,7 +4290,7 @@
 		)
 		(uuid "7dd51b89-0755-492c-9936-d55134bfcc43")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 33.3612 121.92 0)
+			(at 33.4217 121.92 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4322,7 +4322,7 @@
 			)
 		)
 	)
-	(global_label "V_SENCE"
+	(global_label "V_SENSE"
 		(shape input)
 		(at 48.26 114.3 180)
 		(fields_autoplaced yes)
@@ -4334,7 +4334,7 @@
 		)
 		(uuid "8e6281ef-b9b5-4a26-8af5-c4fc461a4b18")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 37.1106 114.3 0)
+			(at 37.1711 114.3 0)
 			(effects
 				(font
 					(size 1.27 1.27)
