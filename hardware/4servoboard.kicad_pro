@@ -60,28 +60,16 @@
       ],
       "drc_exclusions": [
         [
-          "clearance|121487000|82427000|cb9d8046-293a-4021-ae3a-28acbfa417d2|92c8f71a-5f46-4b5d-833e-9b9b04592bd0",
-          "USB-Cの仕様"
+          "clearance|155502800|112447000|0d7445fa-9ade-4c3f-9ce6-23f337cb94ab|0b13a886-b471-44f6-aad7-7e8c934c20d1",
+          ""
         ],
         [
-          "lib_footprint_issues|118652000|79502000|b7015657-ba81-4ee3-b8a1-d4ec09c356ba|00000000-0000-0000-0000-000000000000",
-          "面倒なので後で"
+          "lib_footprint_mismatch|149656800|91059000|cca34619-215a-4644-a6c0-75d5d82c2ba1|00000000-0000-0000-0000-000000000000",
+          ""
         ],
         [
-          "lib_footprint_mismatch|117194800|55168800|9dcd260f-4676-4dac-8c0e-ff538903c1e1|00000000-0000-0000-0000-000000000000",
-          "ネジ"
-        ],
-        [
-          "lib_footprint_mismatch|128110000|81026000|99fb81b5-c60d-4e7b-890d-41d26f16b236|00000000-0000-0000-0000-000000000000",
-          "+のシルク位置を変更"
-        ],
-        [
-          "lib_footprint_mismatch|130555600|55168800|fc5cb9b3-a4bf-4b6e-a75d-9a5d97002731|00000000-0000-0000-0000-000000000000",
-          "ネジ"
-        ],
-        [
-          "net_conflict|122327000|79502000|b7015657-ba81-4ee3-b8a1-d4ec09c356ba|00000000-0000-0000-0000-000000000000",
-          "GNDに変更"
+          "lib_footprint_mismatch|168198800|91109800|240d5b0d-8452-4ded-9f78-ca078400b4ff|00000000-0000-0000-0000-000000000000",
+          ""
         ]
       ],
       "meta": {
@@ -278,12 +266,7 @@
     "equivalence_files": []
   },
   "erc": {
-    "erc_exclusions": [
-      [
-        "pin_to_pin|482600|1016000|c36e884f-3130-4e34-bc6d-f0522e776fb8|1e7d9745-46db-45ae-b378-c01ed2f25eb3|/d0289eff-4822-4b91-a7b4-14805d086f81|/d0289eff-4822-4b91-a7b4-14805d086f81|/d0289eff-4822-4b91-a7b4-14805d086f81",
-        "OPAのマイナス入力を受け取るため"
-      ]
-    ],
+    "erc_exclusions": [],
     "meta": {
       "version": 0
     },
@@ -537,12 +520,7 @@
     },
     "net_colors": null,
     "netclass_assignments": null,
-    "netclass_patterns": [
-      {
-        "netclass": "Default",
-        "pattern": "OPA_N"
-      }
-    ]
+    "netclass_patterns": []
   },
   "pcbnew": {
     "last_paths": {
