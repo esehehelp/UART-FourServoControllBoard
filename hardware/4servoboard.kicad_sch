@@ -6,8 +6,8 @@
 	(paper "A4")
 	(title_block
 		(title "UART-FourServoControllBoard")
-		(date "2026-02-08")
-		(rev "V0.7")
+		(date "2026-02-11")
+		(rev "V0.8")
 		(company "EsEhEhElp")
 	)
 	(lib_symbols
@@ -3632,12 +3632,6 @@
 		(uuid "cfd44cb0-e65e-40d7-92b5-fe3a401a4151")
 	)
 	(junction
-		(at 115.57 106.68)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "d45fe25e-995c-4e57-8c97-a940bc86c8c3")
-	)
-	(junction
 		(at 59.69 62.23)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -4615,16 +4609,6 @@
 	)
 	(wire
 		(pts
-			(xy 115.57 102.87) (xy 115.57 106.68)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "c29a6af0-15ec-4e6f-abaa-cd5ec13b0f36")
-	)
-	(wire
-		(pts
 			(xy 104.14 45.72) (xy 113.03 45.72)
 		)
 		(stroke
@@ -4792,16 +4776,6 @@
 			(type default)
 		)
 		(uuid "e79922de-827d-45d0-b7ff-08ed77175c1d")
-	)
-	(wire
-		(pts
-			(xy 114.3 102.87) (xy 115.57 102.87)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "e7fa6b29-90ec-4b77-a960-26d7992d0731")
 	)
 	(wire
 		(pts
@@ -5192,6 +5166,28 @@
 		(uuid "43596cae-99a1-4308-bfb8-7cabc4e8a429")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 78.2176 113.03 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+				(hide yes)
+			)
+		)
+	)
+	(global_label "VDD"
+		(shape input)
+		(at 114.3 102.87 0)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4c4a3803-8992-4e9f-98fd-e0dfd3c87800")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 120.9138 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6334,7 +6330,7 @@
 	)
 	(symbol
 		(lib_id "PCM_SL_Resistors:Resistor")
-		(at 102.87 102.87 180)
+		(at 110.49 102.87 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -6343,7 +6339,7 @@
 		(fields_autoplaced yes)
 		(uuid "1feedeb0-3f07-47c4-8e40-9d9d5f713fbb")
 		(property "Reference" "R5"
-			(at 102.87 96.52 0)
+			(at 110.49 96.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6351,7 +6347,7 @@
 			)
 		)
 		(property "Value" "1k"
-			(at 102.87 99.06 0)
+			(at 110.49 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6359,7 +6355,7 @@
 			)
 		)
 		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
-			(at 101.981 98.552 0)
+			(at 109.601 98.552 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6368,7 +6364,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 102.362 102.87 0)
+			(at 109.982 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6377,7 +6373,7 @@
 			)
 		)
 		(property "Description" "1/4W Resistor"
-			(at 102.87 102.87 0)
+			(at 110.49 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7601,7 +7597,7 @@
 	)
 	(symbol
 		(lib_id "Device:LED")
-		(at 110.49 102.87 0)
+		(at 102.87 102.87 0)
 		(mirror y)
 		(unit 1)
 		(exclude_from_sim no)
@@ -7611,7 +7607,7 @@
 		(fields_autoplaced yes)
 		(uuid "806bed82-dff7-4030-893b-96f0d37c543e")
 		(property "Reference" "D1"
-			(at 112.0775 96.52 0)
+			(at 104.4575 96.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7619,7 +7615,7 @@
 			)
 		)
 		(property "Value" "Red_1.7V"
-			(at 112.0775 99.06 0)
+			(at 104.4575 99.06 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7627,7 +7623,7 @@
 			)
 		)
 		(property "Footprint" "LED_SMD:LED_0603_1608Metric"
-			(at 110.49 102.87 0)
+			(at 102.87 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7636,7 +7632,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 110.49 102.87 0)
+			(at 102.87 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7645,7 +7641,7 @@
 			)
 		)
 		(property "Description" "Light emitting diode"
-			(at 110.49 102.87 0)
+			(at 102.87 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7654,7 +7650,7 @@
 			)
 		)
 		(property "Sim.Pins" "1=K 2=A"
-			(at 110.49 102.87 0)
+			(at 102.87 102.87 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -8799,7 +8795,7 @@
 			)
 		)
 		(pin "1"
-			(uuid "1f6d5d1c-723b-4bca-9fa8-278aac162d69")
+			(uuid "1f6d5d1c-723b-4bca-9fa8-278aac162d6a")
 		)
 		(pin "5"
 			(uuid "558a8c70-466e-4822-b73e-425253373bee")
@@ -8808,13 +8804,13 @@
 			(uuid "b257cc1c-f786-43a7-9d67-09214fb8e8c3")
 		)
 		(pin "2"
-			(uuid "8e351626-0e1e-46e8-a75b-e8e4a63f43eb")
+			(uuid "8e351626-0e1e-46e8-a75b-e8e4a63f43ec")
 		)
 		(pin "4"
 			(uuid "3344b4fb-68bd-4df4-b628-8d1e4c058a7a")
 		)
 		(pin "6"
-			(uuid "77ab54f7-84d5-4b58-8aec-d7f12d5633d7")
+			(uuid "77ab54f7-84d5-4b58-8aec-d7f12d5633d8")
 		)
 		(instances
 			(project "4servoboard"
@@ -9641,22 +9637,22 @@
 			)
 		)
 		(pin "1"
-			(uuid "1f6d5d1c-723b-4bca-9fa8-278aac162d69")
+			(uuid "1f6d5d1c-723b-4bca-9fa8-278aac162d6b")
 		)
 		(pin "5"
-			(uuid "1d353d84-edda-44fb-af46-9047686f3f4c")
+			(uuid "1d353d84-edda-44fb-af46-9047686f3f4e")
 		)
 		(pin "3"
-			(uuid "b81c1e6f-3db2-4c75-905d-61a01801d3e1")
+			(uuid "b81c1e6f-3db2-4c75-905d-61a01801d3e3")
 		)
 		(pin "2"
-			(uuid "8e351626-0e1e-46e8-a75b-e8e4a63f43eb")
+			(uuid "8e351626-0e1e-46e8-a75b-e8e4a63f43ed")
 		)
 		(pin "4"
-			(uuid "9b1956c9-3e53-421e-b48b-4c549173acfa")
+			(uuid "9b1956c9-3e53-421e-b48b-4c549173acfc")
 		)
 		(pin "6"
-			(uuid "77ab54f7-84d5-4b58-8aec-d7f12d5633d7")
+			(uuid "77ab54f7-84d5-4b58-8aec-d7f12d5633d9")
 		)
 		(instances
 			(project ""
