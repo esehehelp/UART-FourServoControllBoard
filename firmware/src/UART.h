@@ -5,7 +5,7 @@
 * Date               : 2023/04/06
 * Description        : UART communication-related headers
 *******************************************************************************
-* Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
+* Copyright (c) 2021 Nanjing Nanjing Qinheng Microelectronics Co., Ltd.
 * Attention: This software (modified or not) and binary are used for 
 * microcontroller manufactured by Nanjing Qinheng Microelectronics.
 *******************************************************************************/
@@ -20,8 +20,7 @@ extern "C" {
 #include "stdio.h"
 #include "string.h"
 #include "debug.h"
-#include "string.h"
-#include <ch32x035_usbfs_device.h>
+#include "ch32x035_usbfs_device.h"
 #include "ch32x035_conf.h"
 
 /******************************************************************************/
@@ -75,6 +74,11 @@ typedef struct __attribute__((packed)) _UART_CTL
     uint16_t USB_Int_UpTimeCount;                                                /* Serial x interrupt upload timing */
 }UART_CTL, *PUART_CTL;
 
+typedef enum {
+    UART_MODE_DEBUG,   /* PortA=TX, PortB=RX (Standard 2-wire) */
+    UART_MODE_RING     /* PortA=1-Wire, PortB=1-Wire (Ring Bus) */
+} UART_Mode_t;
+
 /***********************************************************************************************************************/
 /* Constant, variable extents */
 /* The following are serial port transmit and receive related variables and buffers */
@@ -86,22 +90,17 @@ extern __attribute__ ((aligned(4))) uint8_t UART2_Rx_Buf[ DEF_UARTx_RX_BUF_LEN ]
 
 /***********************************************************************************************************************/
 /* Function extensibility */
-extern uint8_t RCC_Configuration( void );
-extern void TIM3_Init( void );
-extern void UART2_CfgInit( uint32_t baudrate, uint8_t stopbits, uint8_t parity ); /* UART1 initialization */
-extern void UART2_ParaInit( uint8_t mode );                                       /* Serial port parameter initialization */
-extern void UART2_DMAInit( uint8_t type, uint8_t *pbuf, uint32_t len );           /* Serial port 1-related DMA initialization */
-extern void UART2_Init( uint8_t mode, uint32_t baudrate, uint8_t stopbits, uint8_t parity ); /* Serial port 1 initialization */
-extern void UART2_DataTx_Deal( void );                                            /* Serial port 1 data sending processing  */
-extern void UART2_DataRx_Deal( void );                                            /* Serial port 1 data reception processing */
-extern void UART2_USB_Init( void );                                               /* USB serial port initialization*/
+extern void UART_System_Init( UART_Mode_t mode, uint32_t baudrate );
+extern void UART2_Init( uint8_t mode, uint32_t baudrate, uint8_t stopbits, uint8_t parity );
+extern void UART4_Init( uint32_t baudrate );
+
+extern void UART2_ParaInit( uint8_t mode );
+extern void UART2_USB_Init( void );
+extern void UART2_DataTx_Deal( void );
+extern void UART2_DataRx_Deal( void );
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif
-
-/***********************************************************************************************************************/
-
-
