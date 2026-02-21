@@ -28,8 +28,6 @@ volatile uint32_t UARTx_Rx_DMALastCount;                      /* Serial port 1 r
  * @fn      RCC_Configuration
  *
  * @brief   Configures the different system clocks.
- *
- * @return  none
  */
 uint8_t RCC_Configuration( void )
 {
@@ -44,170 +42,101 @@ uint8_t RCC_Configuration( void )
  * @fn      TIM3_Init
  *
  * @brief   100us Timer
- *          144 * 100 * 13.8888 -----> 100uS
- *
- * @return  none
  */
 void TIM3_Init( void )
 {
     TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure = {0};
-
     TIM_DeInit( TIM3 );
-
-    /* Time base configuration */
     TIM_TimeBaseStructure.TIM_Period = 100 - 1;
     TIM_TimeBaseStructure.TIM_Prescaler = SystemCoreClock / 1000000 - 1;
     TIM_TimeBaseStructure.TIM_ClockDivision = 0;
     TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
     TIM_TimeBaseInit( TIM3, &TIM_TimeBaseStructure );
-
-    /* Clear TIM3 update pending flag */
     TIM_ClearFlag( TIM3, TIM_FLAG_Update );
-
-    /* TIM IT enable */
     TIM_ITConfig( TIM3, TIM_IT_Update, ENABLE );
-
-    /* Enable Interrupt */
     NVIC_EnableIRQ( TIM3_IRQn );
-
-    /* TIM3 enable counter */
     TIM_Cmd( TIM3, ENABLE );
 }
 
 /*********************************************************************
- * @fn      UART2_CfgInit
+ * @fn      UART_CfgInit
  *
- * @brief   Uart2 configuration initialization
- *
- * @return  none
+ * @brief   Uart configuration initialization
  */
-void UART2_CfgInit( uint32_t baudrate, uint8_t stopbits, uint8_t parity )
+void UART_CfgInit( USART_TypeDef *USARTx, uint32_t baudrate, uint8_t stopbits, uint8_t parity, uint8_t half_duplex )
 {
     USART_InitTypeDef USART_InitStructure = {0};
     GPIO_InitTypeDef  GPIO_InitStructure = {0};
-    uint16_t dat = dat;
 
-    /* delete contains in ( ... )  */
-    /* First set the serial port introduction to output high then close the TE and RE of CTLR1 register (note that USARTx->CTLR1 register setting 9 bits has a limit) */
-    /* Note: This operation must be performed, the TX pin otherwise the level will be pulled low */
-    GPIO_SetBits( GPIOA, GPIO_Pin_2 );
-    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_2;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
-    GPIO_Init( GPIOA, &GPIO_InitStructure );
+    if(USARTx == USART2) {
+        RCC_APB1PeriphClockCmd( RCC_APB1Periph_USART2, ENABLE );
+        RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOA | RCC_APB2Periph_AFIO, ENABLE );
+        
+        // Remap USART2 to PA2/PA3 (Default: 000)
+        AFIO->PCFR1 &= ~AFIO_PCFR1_USART2_REMAP;
 
-    /* clear te/re */
-    USART2->CTLR1 &= ~( USART_CTLR1_TE | USART_CTLR1_RE );
+        GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_2;
+        GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+        GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP; 
+        GPIO_Init( GPIOA, &GPIO_InitStructure );
+        
+        // Enable Half-Duplex mode
+        USARTx->CTLR3 |= USART_CTLR3_HDSEL; 
+    } 
+    else if(USARTx == USART4) {
+        RCC_APB1PeriphClockCmd( RCC_APB1Periph_USART4, ENABLE );
+        RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOA | RCC_APB2Periph_AFIO, ENABLE );
+        
+        // Remap USART4 TX to PA5 (Partial Remap 1: 001)
+        AFIO->PCFR1 = (AFIO->PCFR1 & ~AFIO_PCFR1_USART4_REMAP) | AFIO_PCFR1_USART4_REMAP_0;
 
-    /* USART2 Hard configured: */
-    /* PA3 is used for PWM (TIM2_CH4), so we MUST NOT initialize it as RX here. */
-    /* Instead, we use 1-wire mode on PA2. */
+        GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_5;
+        GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+        GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP;
+        GPIO_Init( GPIOA, &GPIO_InitStructure );
+        
+        // Enable Half-Duplex mode
+        USARTx->CTLR3 |= USART_CTLR3_HDSEL;
+    }
 
-    /* Configure USART2 Tx (PA2) as alternate function push-pull */
-    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_2;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP;
-    GPIO_Init( GPIOA, &GPIO_InitStructure );
-
-    /* Enable 1-Wire Mode (Half-Duplex) on PA2 */
-    USART2->CTLR3 |= USART_CTLR3_HDSEL;
-
-    /* Test IO */
-    GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_15;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_Out_PP;
-    GPIO_Init( GPIOA, &GPIO_InitStructure );
-
-    /* USART2 configured as follow:
-        - BaudRate = 115200 baud  
-        - Word Length = 8 Bits
-        - One Stop Bit
-        - No parity
-        - Hardware flow control disabled (RTS and CTS signals)
-        - Receive and transmit enabled
-        - USART Clock disabled
-        - USART CPOL: Clock is active low
-        - USART CPHA: Data is captured on the middle 
-        - USART LastBit: The clock pulse of the last data bit is not output to 
-                         the SCLK pin
-    */
     USART_InitStructure.USART_BaudRate = baudrate;
-    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
+    USART_InitStructure.USART_WordLength = (parity == 0) ? USART_WordLength_8b : USART_WordLength_9b;
+    
+    if( stopbits == 1 ) USART_InitStructure.USART_StopBits = USART_StopBits_1_5;
+    else if( stopbits == 2 ) USART_InitStructure.USART_StopBits = USART_StopBits_2;
+    else USART_InitStructure.USART_StopBits = USART_StopBits_1;
 
-    /* Number of stop bits (0: 1 stop bit; 1: 1.5 stop bits; 2: 2 stop bits). */
-    if( stopbits == 1 )
-    {
-        USART_InitStructure.USART_StopBits = USART_StopBits_1_5;
-    }
-    else if( stopbits == 2 )
-    {
-        USART_InitStructure.USART_StopBits = USART_StopBits_2;
-    }
-    else
-    {
-        USART_InitStructure.USART_StopBits = USART_StopBits_1;
-    }
+    if( parity == 1 ) USART_InitStructure.USART_Parity = USART_Parity_Odd;
+    else if( parity == 2 ) USART_InitStructure.USART_Parity = USART_Parity_Even;
+    else USART_InitStructure.USART_Parity = USART_Parity_No;
 
-    /* Check digit (0: None; 1: Odd; 2: Even; 3: Mark; 4: Space); */
-    if( parity == 1 )
-    {
-        USART_InitStructure.USART_Parity = USART_Parity_Odd;
-        USART_InitStructure.USART_WordLength = USART_WordLength_9b;
-    }
-    else if( parity == 2 )
-    {
-        USART_InitStructure.USART_Parity = USART_Parity_Even;
-        USART_InitStructure.USART_WordLength = USART_WordLength_9b;
-    }
-    else
-    {
-        USART_InitStructure.USART_Parity = USART_Parity_No;
-    }
     USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
     USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
-    USART_Init( USART2, &USART_InitStructure );
-    USART_ClearFlag( USART2, USART_FLAG_TC );
-
-    /* Enable USART2 */
-    USART_Cmd( USART2, ENABLE );
+    USART_Init( USARTx, &USART_InitStructure );
+    USART_Cmd( USARTx, ENABLE );
 }
 
-/*********************************************************************
- * @fn      UART2_ParaInit
- *
- * @brief   Uart2 parameters initialization
- *          mode = 0 : Used in usb modify initialization
- *          mode = 1 : Used in default initializations
- * @return  none
- */
 void UART2_ParaInit( uint8_t mode )
 {
     uint8_t i;
-
     Uart.Rx_LoadPtr = 0x00;
     Uart.Rx_DealPtr = 0x00;
     Uart.Rx_RemainLen = 0x00;
     Uart.Rx_TimeOut = 0x00;
     Uart.Rx_TimeOutMax = 30;
-
     Uart.Tx_LoadNum = 0x00;
     Uart.Tx_DealNum = 0x00;
     Uart.Tx_RemainNum = 0x00;
-    for( i = 0; i < DEF_UARTx_TX_BUF_NUM_MAX; i++ )
-    {
-        Uart.Tx_PackLen[ i ] = 0x00;
-    }
+    for( i = 0; i < DEF_UARTx_TX_BUF_NUM_MAX; i++ ) Uart.Tx_PackLen[ i ] = 0x00;
     Uart.Tx_Flag = 0x00;
     Uart.Tx_CurPackLen = 0x00;
     Uart.Tx_CurPackPtr = 0x00;
-
     Uart.USB_Up_IngFlag = 0x00;
     Uart.USB_Up_TimeOut = 0x00;
     Uart.USB_Up_Pack0_Flag = 0x00;
     Uart.USB_Down_StopFlag = 0x00;
     UARTx_Rx_DMACurCount = 0x00;
     UARTx_Rx_DMALastCount = 0x00;
-
     if( mode )
     {
         Uart.Com_Cfg[ 0 ] = (uint8_t)( DEF_UARTx_BAUDRATE );
@@ -221,28 +150,14 @@ void UART2_ParaInit( uint8_t mode )
     }
 }
 
-
-/*********************************************************************
- * @fn      UART2_DMAInit
- *
- * @brief   Uart2 DMA configuration initialization
- *          type = 0 : USART2_TX
- *          type = 1 : USART2_RX
- *          pbuf     : Tx/Rx Buffer, should be aligned(4)
- *          len      : buffer size of Tx/Rx Buffer
- *
- * @return  none
- */
 void UART2_DMAInit( uint8_t type, uint8_t *pbuf, uint32_t len )
 {
     DMA_InitTypeDef DMA_InitStructure = {0};
-
     if( type == 0x00 )
     {
-        /* UART2 Tx-DMA configuration */
         DMA_DeInit( DMA1_Channel7 );
-        DMA_InitStructure.DMA_PeripheralBaseAddr = (u32)(&USART2->DATAR);
-        DMA_InitStructure.DMA_MemoryBaseAddr = (u32)pbuf;
+        DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)(&USART2->DATAR);
+        DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t)pbuf;
         DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;
         DMA_InitStructure.DMA_BufferSize = len;
         DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
@@ -253,15 +168,13 @@ void UART2_DMAInit( uint8_t type, uint8_t *pbuf, uint32_t len )
         DMA_InitStructure.DMA_Priority = DMA_Priority_Medium;
         DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
         DMA_Init( DMA1_Channel7, &DMA_InitStructure );
-
         DMA_Cmd( DMA1_Channel7, ENABLE );
     }
     else
     {
-        /* UART2 Rx-DMA configuration */
         DMA_DeInit( DMA1_Channel6 );
-        DMA_InitStructure.DMA_PeripheralBaseAddr = (u32)(&USART2->DATAR);
-        DMA_InitStructure.DMA_MemoryBaseAddr = (u32)pbuf;
+        DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)(&USART2->DATAR);
+        DMA_InitStructure.DMA_MemoryBaseAddr = (uint32_t)pbuf;
         DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
         DMA_InitStructure.DMA_BufferSize = len;
         DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
@@ -272,89 +185,63 @@ void UART2_DMAInit( uint8_t type, uint8_t *pbuf, uint32_t len )
         DMA_InitStructure.DMA_Priority = DMA_Priority_Medium;
         DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
         DMA_Init( DMA1_Channel6, &DMA_InitStructure );
-
         DMA_Cmd( DMA1_Channel6, ENABLE );
     }
 }
 
-/*********************************************************************
- * @fn      UART2_Init
- *
- * @brief   Uart2 total initialization
- *          mode     : See the useage of UART2_ParaInit( mode )
- *          baudrate : Serial port 2 default baud rate
- *          stopbits : Serial port 2 default stop bits
- *          parity   : Serial port 2 default parity
- *
- * @return  none
- */
 void UART2_Init( uint8_t mode, uint32_t baudrate, uint8_t stopbits, uint8_t parity )
 {
     USART_DMACmd( USART2, USART_DMAReq_Rx, DISABLE );
     DMA_Cmd( DMA1_Channel6, DISABLE );
     DMA_Cmd( DMA1_Channel7, DISABLE );
-
-    UART2_CfgInit( baudrate, stopbits, parity );
+    // Initialize USART2 in 1-Wire mode (always for this board)
+    UART_CfgInit( USART2, baudrate, stopbits, parity, 1 );
+    
     UART2_DMAInit( 0, &UART2_Tx_Buf[ 0 ], 0 );
     UART2_DMAInit( 1, &UART2_Rx_Buf[ 0 ], DEF_UARTx_RX_BUF_LEN );
-
     USART_DMACmd( USART2, USART_DMAReq_Rx, ENABLE );
-
     UART2_ParaInit( mode );
 }
 
-/*********************************************************************
- * @fn      UART2_USB_Init
- *
- * @brief   Uart2 initialization in usb interrupt
- *
- * @return  none
- */
+void UART4_Init( uint32_t baudrate )
+{
+    // Initialize USART4 in 1-Wire mode
+    UART_CfgInit( USART4, baudrate, 0, 0, 1 );
+}
+
+void UART_System_Init( UART_Mode_t mode, uint32_t baudrate )
+{
+    // Both UARTs are initialized for Ring Bus (1-Wire)
+    // Debug mode can be handled by choosing which port to connect to.
+    UART2_Init(1, baudrate, 0, 0); 
+    UART4_Init(baudrate);
+}
+
 void UART2_USB_Init( void )
 {
     uint32_t baudrate;
-    uint8_t  stopbits;
-    uint8_t  parity;
-
+    uint8_t  stopbits, parity;
     baudrate = ( uint32_t )( Uart.Com_Cfg[ 3 ] << 24 ) + ( uint32_t )( Uart.Com_Cfg[ 2 ] << 16 );
     baudrate += ( uint32_t )( Uart.Com_Cfg[ 1 ] << 8 ) + ( uint32_t )( Uart.Com_Cfg[ 0 ] );
     stopbits = Uart.Com_Cfg[ 4 ];
     parity = Uart.Com_Cfg[ 5 ];
-
-    UART2_Init( 0, baudrate, stopbits, parity );
-
-    /* restart usb receive  */
+    UART2_Init( 0, baudrate, stopbits, parity ); 
     USBFSD->UEP2_DMA = (uint32_t)(uint8_t *)&UART2_Tx_Buf[ 0 ];
     USBFSD->UEP2_CTRL_H &= ~USBFS_UEP_R_RES_MASK;
     USBFSD->UEP2_CTRL_H |= USBFS_UEP_R_RES_ACK;
 }
 
-/*********************************************************************
- * @fn      UART2_DataTx_Deal
- *
- * @brief   Uart2 data transmission processing
- *
- * @return  none
- */
 void UART2_DataTx_Deal( void )
 {
     uint16_t  count;
-
-    /* uart1 transmission processing */
     if( Uart.Tx_Flag )
     {
-        /* Query whether the DMA transmission of the serial port is completed */
         if( USART2->STATR & USART_FLAG_TC )
         {
             USART2->STATR = (uint16_t)( ~USART_FLAG_TC );
             USART2->CTLR3 &= ( ~USART_DMAReq_Tx );
-
             Uart.Tx_Flag = 0x00;
-
             NVIC_DisableIRQ( USBFS_IRQn );
-            NVIC_DisableIRQ( USBFS_IRQn );
-
-            /* Calculate the variables of last data */
             count = Uart.Tx_CurPackLen - DEF_UART2_TX_DMA_CH->CNTR;
             Uart.Tx_CurPackLen -= count;
             Uart.Tx_CurPackPtr += count;
@@ -362,36 +249,27 @@ void UART2_DataTx_Deal( void )
             {
                 Uart.Tx_PackLen[ Uart.Tx_DealNum ] = 0x0000;
                 Uart.Tx_DealNum++;
-                if( Uart.Tx_DealNum >= DEF_UARTx_TX_BUF_NUM_MAX )
-                {
-                    Uart.Tx_DealNum = 0x00;
-                }
+                if( Uart.Tx_DealNum >= DEF_UARTx_TX_BUF_NUM_MAX ) Uart.Tx_DealNum = 0x00;
                 Uart.Tx_RemainNum--;
             }
-
-            /* If the current serial port has suspended the downlink, restart the driver downlink */
             if( ( Uart.USB_Down_StopFlag == 0x01 ) && ( Uart.Tx_RemainNum < 2 ) )
             {
                 USBFSD->UEP2_CTRL_H &= ~USBFS_UEP_R_RES_MASK;
                 USBFSD->UEP2_CTRL_H |= USBFS_UEP_R_RES_ACK;
                 Uart.USB_Down_StopFlag = 0x00;
             }
-
             NVIC_EnableIRQ( USBFS_IRQn );
         }
     }
     else
     {
-        /* Load data from the serial port send buffer to send  */
         if( Uart.Tx_RemainNum )
         {
-            /* Determine whether to load from the last unsent buffer or from a new buffer */
             if( Uart.Tx_CurPackLen == 0x00 )
             {
                 Uart.Tx_CurPackLen = Uart.Tx_PackLen[ Uart.Tx_DealNum ];
                 Uart.Tx_CurPackPtr = ( Uart.Tx_DealNum * DEF_USB_FS_PACK_LEN );
             }
-            /* Configure DMA and send */
             USART_ClearFlag( USART2, USART_FLAG_TC );
             DMA_Cmd( DEF_UART2_TX_DMA_CH, DISABLE );
             DEF_UART2_TX_DMA_CH->MADDR = (uint32_t)&UART2_Tx_Buf[ Uart.Tx_CurPackPtr ];
@@ -403,130 +281,65 @@ void UART2_DataTx_Deal( void )
     }
 }
 
-/*********************************************************************
- * @fn      UART2_DataRx_Deal
- *
- * @brief   Uart2 data receiving processing
- *
- * @return  none
- */
 void UART2_DataRx_Deal( void )
 {
     uint16_t temp16;
     uint32_t remain_len;
     uint16_t packlen;
-
-    /* Serial port 1 data DMA receive processing */
-    NVIC_DisableIRQ( USBFS_IRQn );
     NVIC_DisableIRQ( USBFS_IRQn );
     UARTx_Rx_DMACurCount = DEF_UART2_RX_DMA_CH->CNTR;
     if( UARTx_Rx_DMALastCount != UARTx_Rx_DMACurCount )
-
     {
-        if( UARTx_Rx_DMALastCount > UARTx_Rx_DMACurCount )
-        {
-            temp16 = UARTx_Rx_DMALastCount - UARTx_Rx_DMACurCount;
-        }
-        else
-        {
+        if( UARTx_Rx_DMALastCount > UARTx_Rx_DMACurCount ) temp16 = UARTx_Rx_DMALastCount - UARTx_Rx_DMACurCount;
+        else {
             temp16 = DEF_UARTx_RX_BUF_LEN - UARTx_Rx_DMACurCount;
             temp16 += UARTx_Rx_DMALastCount;
         }
         UARTx_Rx_DMALastCount = UARTx_Rx_DMACurCount;
-        if( ( Uart.Rx_RemainLen + temp16 ) > DEF_UARTx_RX_BUF_LEN )
-        {
-            /* Overflow handling */
-            /* Save frame error status */
-            printf("U0_O:%08lx\n",(uint32_t)Uart.Rx_RemainLen);
-        }
-        else
-        {
-            Uart.Rx_RemainLen += temp16;
-        }
-
-        /* Setting reception status */
+        if( ( Uart.Rx_RemainLen + temp16 ) > DEF_UARTx_RX_BUF_LEN ) printf("U0_O:%08lx\n",(uint32_t)Uart.Rx_RemainLen);
+        else Uart.Rx_RemainLen += temp16;
         Uart.Rx_TimeOut = 0x00;
     }
     NVIC_EnableIRQ( USBFS_IRQn );
-
-    /*****************************************************************/
-    /* Serial port 1 data processing via USB upload and reception */
     if( Uart.Rx_RemainLen )
     {
         if( Uart.USB_Up_IngFlag == 0 )
         {
-            /* Calculate the length of this upload */
             remain_len = Uart.Rx_RemainLen;
             packlen = 0x00;
-            if( remain_len >= DEF_USBD_FS_PACK_SIZE )
-            {
-                packlen = DEF_USBD_FS_PACK_SIZE;
-            }
-            else
-            {
-                if( Uart.Rx_TimeOut >= Uart.Rx_TimeOutMax )
-                {
-                    packlen = remain_len;
-                }
-            }
-            if( packlen > ( DEF_UARTx_RX_BUF_LEN - Uart.Rx_DealPtr ) )
-            {
-                packlen = ( DEF_UARTx_RX_BUF_LEN - Uart.Rx_DealPtr );
-            }
-
-            /* Upload serial data via usb */
+            if( remain_len >= DEF_USBD_FS_PACK_SIZE ) packlen = DEF_USBD_FS_PACK_SIZE;
+            else if( Uart.Rx_TimeOut >= Uart.Rx_TimeOutMax ) packlen = remain_len;
+            if( packlen > ( DEF_UARTx_RX_BUF_LEN - Uart.Rx_DealPtr ) ) packlen = ( DEF_UARTx_RX_BUF_LEN - Uart.Rx_DealPtr );
             if( packlen )
             {
-                NVIC_DisableIRQ( USBFS_IRQn );
                 NVIC_DisableIRQ( USBFS_IRQn );
                 Uart.USB_Up_IngFlag = 0x01;
                 Uart.USB_Up_TimeOut = 0x00;
                 USBFS_Endp_DataUp( DEF_UEP3, &UART2_Rx_Buf[ Uart.Rx_DealPtr ], packlen, DEF_UEP_CPY_LOAD );
-                /* Calculate the variables of interest */
                 Uart.Rx_RemainLen -= packlen;
                 Uart.Rx_DealPtr += packlen;
-                if( Uart.Rx_DealPtr >= DEF_UARTx_RX_BUF_LEN )
-                {
-                    Uart.Rx_DealPtr = 0x00;
-                }
-
-                /* Start 0-length packet timeout timer */
-                if( packlen == DEF_USBD_FS_PACK_SIZE )
-                {
-                    Uart.USB_Up_Pack0_Flag = 0x01;
-                }
-
+                if( Uart.Rx_DealPtr >= DEF_UARTx_RX_BUF_LEN ) Uart.Rx_DealPtr = 0x00;
+                if( packlen == DEF_USBD_FS_PACK_SIZE ) Uart.USB_Up_Pack0_Flag = 0x01;
                 NVIC_EnableIRQ( USBFS_IRQn );
             }
         }
-        else
+        else if( Uart.USB_Up_TimeOut >= DEF_UARTx_USB_UP_TIMEOUT )
         {
-            /* Set the upload success flag directly if the upload is not successful after the timeout */
-            if( Uart.USB_Up_TimeOut >= DEF_UARTx_USB_UP_TIMEOUT )
-            {
-                Uart.USB_Up_IngFlag = 0x00;
-                USBFS_Endp_Busy[ DEF_UEP3 ] = 0;
-            }
+            Uart.USB_Up_IngFlag = 0x00;
+            USBFS_Endp_Busy[ DEF_UEP3 ] = 0;
         }
     }
-
-    /*****************************************************************/
-    /* Determine if a 0-length packet needs to be uploaded (required for CDC mode) */
-    if( Uart.USB_Up_Pack0_Flag )
+    if( Uart.USB_Up_Pack0_Flag && Uart.USB_Up_IngFlag == 0 )
     {
-        if( Uart.USB_Up_IngFlag == 0 )
+        if( Uart.USB_Up_TimeOut >= ( DEF_UARTx_RX_TIMEOUT * 20 ) )
         {
-            if( Uart.USB_Up_TimeOut >= ( DEF_UARTx_RX_TIMEOUT * 20 ) )
-            {
-                NVIC_DisableIRQ( USBFS_IRQn );
-                NVIC_DisableIRQ( USBFS_IRQn );
-                Uart.USB_Up_IngFlag = 0x01;
-                Uart.USB_Up_TimeOut = 0x00;
-                USBFS_Endp_DataUp( DEF_UEP3, &UART2_Rx_Buf[ Uart.Rx_DealPtr ], 0, DEF_UEP_CPY_LOAD );
-                Uart.USB_Up_IngFlag = 0;
-                Uart.USB_Up_Pack0_Flag = 0x00;
-                NVIC_EnableIRQ( USBFS_IRQn );
-            }
+            NVIC_DisableIRQ( USBFS_IRQn );
+            Uart.USB_Up_IngFlag = 0x01;
+            Uart.USB_Up_TimeOut = 0x00;
+            USBFS_Endp_DataUp( DEF_UEP3, &UART2_Rx_Buf[ Uart.Rx_DealPtr ], 0, DEF_UEP_CPY_LOAD );
+            Uart.USB_Up_IngFlag = 0;
+            Uart.USB_Up_Pack0_Flag = 0x00;
+            NVIC_EnableIRQ( USBFS_IRQn );
         }
     }
 }
