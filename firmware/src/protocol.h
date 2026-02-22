@@ -36,19 +36,10 @@ typedef struct {
     uint8_t expected_len;
 } Parser_t;
 
-typedef struct __attribute__((packed)) {
-    uint8_t duty;
-    uint16_t dur_ms;
-} LedStep_t;
-
 extern volatile uint8_t g_dlm_requested;
 extern volatile uint8_t g_led_duty;
-extern volatile uint8_t g_led_mode;
-extern volatile LedStep_t g_led_steps[20];
-extern volatile uint8_t g_led_step_count;
 
 void Protocol_Init(uint8_t device_id);
-void Protocol_Tick(uint32_t elapsed_ms);
 void Process_Byte(Interface_t iface, uint8_t b);
 void Process_Packet(uint8_t *buf, uint8_t len);
 void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd, uint8_t *data, uint8_t len);

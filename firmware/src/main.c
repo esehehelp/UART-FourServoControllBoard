@@ -8,6 +8,33 @@
 #include "usb_pd.h"
 #include <stdio.h>
 
+volatile uint32_t g_ms_ticks = 0;
+volatile uint32_t g_dlm_timer = 0;
+
+void TIM3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+void TIM3_IRQHandler(void) {
+    if (TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET) {
+        g_ms_ticks++;
+        if (g_dlm_requested && g_dlm_timer > 0) {
+            g_dlm_timer--;
+        }
+        TIM_ClearITPendingBit(TIM3, TIM_IT_Update);
+    }
+}
+
+void Timer3_Init(void) {
+    TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure = {0};
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
+    TIM_TimeBaseStructure.TIM_Period = 1000 - 1;
+    TIM_TimeBaseStructure.TIM_Prescaler = (SystemCoreClock / 1000000) - 1;
+    TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;
+    TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
+    TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure);
+    TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
+    NVIC_EnableIRQ(TIM3_IRQn);
+    TIM_Cmd(TIM3, ENABLE);
+}
+
 int main(void) {
     SystemCoreClockUpdate();
     Delay_Init();
@@ -25,6 +52,7 @@ int main(void) {
     UART_System_Init(UART_MODE_RING, 115200);
     
     USB_PD_Init();
+    Timer3_Init();
 
     // Initialize PB12 for Status LED
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
@@ -39,59 +67,43 @@ int main(void) {
         GPIOB->OUTDR ^= GPIO_Pin_12;
         Delay_Ms(100);
     }
-    // Set to default state (0 = OFF for active-high)
     g_led_duty = 0;
 
-    uint32_t dlm_timer = 0;
-    uint32_t last_ms_tick = (uint32_t)SysTick->CNT;
+    uint32_t last_ms = 0;
     uint8_t soft_pwm_cnt = 0;
 
     while(1) {
         USB_PD_Process();
 
-        // Soft PWM for LED
-        soft_pwm_cnt++;
-        if (g_dlm_requested) {
-            // DLM Mode: Aggressive Fast Blink (5Hz)
-            if ((dlm_timer / 100) % 2) GPIOB->BSHR = GPIO_Pin_12;
-            else GPIOB->BCR = GPIO_Pin_12;
-        } else {
-            // Normal Mode: Soft PWM
-            if (soft_pwm_cnt < g_led_duty) GPIOB->BSHR = GPIO_Pin_12;
-            else GPIOB->BCR = GPIO_Pin_12;
-        }
+        // 1ms Tasks
+        uint32_t now_ms = g_ms_ticks;
+        if (now_ms != last_ms) {
+            last_ms = now_ms;
 
-        // 1ms Timebase
-        uint32_t now = (uint32_t)SysTick->CNT;
-        uint32_t diff = now - last_ms_tick;
-        uint32_t ticks_per_ms = SystemCoreClock / 1000;
-
-        if (diff >= ticks_per_ms) {
-            uint32_t elapsed = diff / ticks_per_ms;
-            last_ms_tick += elapsed * ticks_per_ms;
-            
-            Protocol_Tick(elapsed);
-            
             if (g_dlm_requested) {
-                if (dlm_timer == 0) dlm_timer = 2000;
-                else {
-                    if (dlm_timer > elapsed) dlm_timer -= elapsed;
-                    else dlm_timer = 0;
-
-                    if (dlm_timer <= 1800 && dlm_timer > 0) { 
-                        // Use the robust method to enter ISP via Software Reset
-                        Jump_To_DLM();
-                    }
+                if (g_dlm_timer == 0) g_dlm_timer = 2000;
+                if (g_dlm_timer <= 1800 && g_dlm_timer > 0) {
+                    Jump_To_DLM(); // Reset into ISP
                 }
             }
         }
 
-        // Poll UART2
+        // Soft PWM for LED (Run as fast as possible)
+        soft_pwm_cnt++;
+        uint8_t target_duty = g_led_duty;
+        
+        if (g_dlm_requested) {
+            // DLM Blink Overrides normal duty
+            target_duty = ((g_dlm_timer / 100) % 2) ? 255 : 0;
+        }
+
+        if (soft_pwm_cnt < target_duty) GPIOB->BSHR = GPIO_Pin_12;
+        else GPIOB->BCR = GPIO_Pin_12;
+
+        // Poll UARTs
         if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET) {
             Process_Byte(IF_UART2, USART_ReceiveData(USART2));
         }
-        
-        // Poll UART4
         if (USART_GetFlagStatus(USART4, USART_FLAG_RXNE) != RESET) {
             Process_Byte(IF_UART4, USART_ReceiveData(USART4));
         }

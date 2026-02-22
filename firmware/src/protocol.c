@@ -11,21 +11,11 @@ static Parser_t g_parsers[4];
 
 volatile uint8_t g_dlm_requested = 0;
 volatile uint8_t g_led_duty = 0;
-volatile uint8_t g_led_mode = 0; // 0: Static, 1: Pattern
-volatile LedStep_t g_led_steps[20];
-volatile uint8_t g_led_step_count = 0;
-
-static volatile uint8_t g_led_pattern_idx = 0;
-static volatile uint32_t g_led_pattern_timer = 0;
 
 void Protocol_Init(uint8_t device_id) {
     g_device_id = device_id;
     g_dlm_requested = 0;
     g_led_duty = 0;
-    g_led_mode = 0;
-    g_led_step_count = 0;
-    g_led_pattern_idx = 0;
-    g_led_pattern_timer = 0;
     memset(g_parsers, 0, sizeof(g_parsers));
 }
 
@@ -39,17 +29,6 @@ uint8_t crc8(const uint8_t *data, size_t len) {
         }
     }
     return crc;
-}
-
-void Protocol_Tick(uint32_t elapsed_ms) {
-    if (g_led_mode == 1 && g_led_step_count > 0) {
-        g_led_pattern_timer += elapsed_ms;
-        if (g_led_pattern_timer >= g_led_steps[g_led_pattern_idx].dur_ms) {
-            g_led_pattern_timer = 0;
-            g_led_pattern_idx = (g_led_pattern_idx + 1) % g_led_step_count;
-            g_led_duty = g_led_steps[g_led_pattern_idx].duty;
-        }
-    }
 }
 
 void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd, uint8_t *data, uint8_t len) {
@@ -78,18 +57,15 @@ void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd,
 }
 
 void Forward_Packet(Interface_t source_iface, uint8_t *pkt, uint8_t len) {
-    // Forward to USB if source was not USB
     if (source_iface != IF_USB) {
         USBFS_Endp_DataUp(DEF_UEP3, pkt, len, DEF_UEP_CPY_LOAD);
     }
-    // Forward to UART2 if source was not UART2
     if (source_iface != IF_UART2) {
         for(int i=0; i<len; i++) {
             while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
             USART_SendData(USART2, pkt[i]);
         }
     }
-    // Forward to UART4 if source was not UART4
     if (source_iface != IF_UART4) {
         for(int i=0; i<len; i++) {
             while(USART_GetFlagStatus(USART4, USART_FLAG_TXE) == RESET);
@@ -133,34 +109,12 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
         case 0x05: // STATIC_LED
             if (len >= 1) {
                 g_led_duty = data[0];
-                g_led_mode = 0; // Back to static
             }
             break;
         case 0x06: // Set Voltage (PD PPS)
             if (len >= 2) {
                 uint16_t mv = (data[0] << 8) | data[1];
                 USB_PD_Request_Voltage(mv);
-            }
-            break;
-        case 0x07: // LED Pattern
-            if (len >= 2) {
-                g_led_mode = data[0];
-                uint8_t steps = data[1];
-                if (steps > 20) steps = 20;
-                g_led_step_count = steps;
-                for(int i=0; i<steps; i++) {
-                    if (2 + i*3 + 2 < len) {
-                        g_led_steps[i].duty = data[2 + i*3];
-                        uint16_t dur = (data[3 + i*3] << 8) | data[4 + i*3];
-                        if (dur == 0) dur = 1; // Minimum 1ms
-                        g_led_steps[i].dur_ms = dur;
-                    }
-                }
-                g_led_pattern_idx = 0;
-                g_led_pattern_timer = 0;
-                if (g_led_mode == 1 && g_led_step_count > 0) {
-                    g_led_duty = g_led_steps[0].duty;
-                }
             }
             break;
         case 0xF0: // DLM (Start Countdown to ISP)
@@ -171,22 +125,16 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
 
 void Process_Byte(Interface_t iface, uint8_t b) {
     Parser_t *p = &g_parsers[iface];
-    
-    // Safety: Prevent buffer overflow
     if (p->len >= 128) {
         p->len = 0;
         p->state = STATE_HEADER;
     }
-    
     p->buf[p->len++] = b;
 
     switch(p->state) {
         case STATE_HEADER:
-            if (b == PKT_HEADER) {
-                p->state = STATE_TARGET;
-            } else {
-                p->len = 0;
-            }
+            if (b == PKT_HEADER) p->state = STATE_TARGET;
+            else p->len = 0;
             break;
         case STATE_TARGET:
             p->target_id = b;
@@ -225,7 +173,5 @@ void Process_Byte(Interface_t iface, uint8_t b) {
 }
 
 void Process_Packet(uint8_t *buf, uint8_t len) {
-    for(uint8_t i=0; i<len; i++) {
-        Process_Byte(IF_USB, buf[i]);
-    }
+    for(uint8_t i=0; i<len; i++) Process_Byte(IF_USB, buf[i]);
 }
