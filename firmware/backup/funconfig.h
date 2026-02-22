@@ -1,8 +1,0 @@
-#ifndef _FUNCONFIG_H
-#define _FUNCONFIG_H
-
-#define FUNCONF_USE_DEBUGPRINTF 1
-#define FUNCONF_USE_UART_PRINTF 0
-#define FUNCONF_USE_USB 1
-
-#endif
