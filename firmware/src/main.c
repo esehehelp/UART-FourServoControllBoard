@@ -34,8 +34,16 @@ int main(void) {
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
 
+    // Startup Verification: Blink LED 3 times
+    for(int i=0; i<6; i++) {
+        GPIOB->OUTDR ^= GPIO_Pin_12;
+        Delay_Ms(100);
+    }
+    // Set to default state (0 = OFF for active-high)
+    g_led_duty = 0;
+
     uint32_t dlm_timer = 0;
-    uint32_t last_ms_tick = 0;
+    uint32_t last_ms_tick = (uint32_t)SysTick->CNT;
     uint8_t soft_pwm_cnt = 0;
 
     while(1) {
@@ -54,21 +62,26 @@ int main(void) {
         }
 
         // 1ms Timebase
-        if (SysTick->CNT - last_ms_tick > (SystemCoreClock / 1000)) {
-            last_ms_tick = SysTick->CNT;
+        uint32_t now = (uint32_t)SysTick->CNT;
+        uint32_t diff = now - last_ms_tick;
+        uint32_t ticks_per_ms = SystemCoreClock / 1000;
+
+        if (diff >= ticks_per_ms) {
+            uint32_t elapsed = diff / ticks_per_ms;
+            last_ms_tick += elapsed * ticks_per_ms;
+            
+            Protocol_Tick(elapsed);
             
             if (g_dlm_requested) {
-                if (dlm_timer == 0) dlm_timer = 10000;
+                if (dlm_timer == 0) dlm_timer = 2000;
                 else {
-                    dlm_timer--;
-                    if (dlm_timer == 8000) { 
-                        printf("Resetting to ISP now...\n");
-                        Delay_Ms(100);
-                        
+                    if (dlm_timer > elapsed) dlm_timer -= elapsed;
+                    else dlm_timer = 0;
+
+                    if (dlm_timer <= 1800 && dlm_timer > 0) { 
                         // Use the robust method to enter ISP via Software Reset
                         Jump_To_DLM();
                     }
-                    if (dlm_timer == 0) NVIC_SystemReset();
                 }
             }
         }

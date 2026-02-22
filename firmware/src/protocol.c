@@ -11,11 +11,21 @@ static Parser_t g_parsers[4];
 
 volatile uint8_t g_dlm_requested = 0;
 volatile uint8_t g_led_duty = 0;
+volatile uint8_t g_led_mode = 0; // 0: Static, 1: Pattern
+volatile LedStep_t g_led_steps[20];
+volatile uint8_t g_led_step_count = 0;
+
+static volatile uint8_t g_led_pattern_idx = 0;
+static volatile uint32_t g_led_pattern_timer = 0;
 
 void Protocol_Init(uint8_t device_id) {
     g_device_id = device_id;
     g_dlm_requested = 0;
     g_led_duty = 0;
+    g_led_mode = 0;
+    g_led_step_count = 0;
+    g_led_pattern_idx = 0;
+    g_led_pattern_timer = 0;
     memset(g_parsers, 0, sizeof(g_parsers));
 }
 
@@ -31,8 +41,19 @@ uint8_t crc8(const uint8_t *data, size_t len) {
     return crc;
 }
 
+void Protocol_Tick(uint32_t elapsed_ms) {
+    if (g_led_mode == 1 && g_led_step_count > 0) {
+        g_led_pattern_timer += elapsed_ms;
+        if (g_led_pattern_timer >= g_led_steps[g_led_pattern_idx].dur_ms) {
+            g_led_pattern_timer = 0;
+            g_led_pattern_idx = (g_led_pattern_idx + 1) % g_led_step_count;
+            g_led_duty = g_led_steps[g_led_pattern_idx].duty;
+        }
+    }
+}
+
 void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd, uint8_t *data, uint8_t len) {
-    uint8_t pkt[64];
+    uint8_t pkt[128];
     pkt[0] = PKT_HEADER;
     pkt[1] = target;
     pkt[2] = source;
@@ -109,9 +130,10 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 g_device_id = data[1];
             }
             break;
-        case 0x05: // BLINK_LED
+        case 0x05: // STATIC_LED
             if (len >= 1) {
                 g_led_duty = data[0];
+                g_led_mode = 0; // Back to static
             }
             break;
         case 0x06: // Set Voltage (PD PPS)
@@ -120,8 +142,28 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 USB_PD_Request_Voltage(mv);
             }
             break;
+        case 0x07: // LED Pattern
+            if (len >= 2) {
+                g_led_mode = data[0];
+                uint8_t steps = data[1];
+                if (steps > 20) steps = 20;
+                g_led_step_count = steps;
+                for(int i=0; i<steps; i++) {
+                    if (2 + i*3 + 2 < len) {
+                        g_led_steps[i].duty = data[2 + i*3];
+                        uint16_t dur = (data[3 + i*3] << 8) | data[4 + i*3];
+                        if (dur == 0) dur = 1; // Minimum 1ms
+                        g_led_steps[i].dur_ms = dur;
+                    }
+                }
+                g_led_pattern_idx = 0;
+                g_led_pattern_timer = 0;
+                if (g_led_mode == 1 && g_led_step_count > 0) {
+                    g_led_duty = g_led_steps[0].duty;
+                }
+            }
+            break;
         case 0xF0: // DLM (Start Countdown to ISP)
-            printf("DLM Received! Entering ISP in 2 seconds...\n");
             g_dlm_requested = 1;
             break;
     }
@@ -129,6 +171,13 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
 
 void Process_Byte(Interface_t iface, uint8_t b) {
     Parser_t *p = &g_parsers[iface];
+    
+    // Safety: Prevent buffer overflow
+    if (p->len >= 128) {
+        p->len = 0;
+        p->state = STATE_HEADER;
+    }
+    
     p->buf[p->len++] = b;
 
     switch(p->state) {
