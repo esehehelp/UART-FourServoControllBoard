@@ -1,47 +1,40 @@
-# CH32X035F7P6 Firmware Specification (Revised)
+# CH32X035F7P6 ファームウェア仕様 (v2.1)
 
-## 1. Peripheral Mapping
-| Function | Peripheral | Pin / Channel | Notes |
+## 1. 周辺機能の割り当て
+| 機能 | 周辺機能 | ピン / チャンネル | 備考 |
 | :--- | :--- | :--- | :--- |
-| **Servo CH0** | TIM2_CH1 | PA0 (Pin 6) | |
-| **Servo CH1** | TIM2_CH2 | PA1 (Pin 7) | |
-| **Servo CH2** | TIM2_CH4 | PA3 (Pin 9) | Freed by USART2 RX remap |
-| **Servo CH3** | TIM1_CH2 | PC1 (Pin 5) | Full Remap required |
-| **UART_A (TX)**| USART2_TX | PA2 (Pin 8) | |
-| **UART_B (RX)**| USART2_RX | PA5 (Pin 11)| Remapped from PA3 |
-| **V_SENSE** | ADC_IN6 | PA6 (Pin 12)| R1=5.1k, R2=1k |
-| **T_SENSE** | ADC_IN9 | PB1 (Pin 14)| NTC 22k, B=4050 |
-| **I_SENSE (P)**| OPA2_P0 | PA7 (Pin 13)| Shunt 10mOhm |
-| **I_SENSE (O)**| OPA2_OUT | PA4 (Internal)| NC Pin, sampled via **ADC_IN4** |
-| **LED** | GPIO | PB12 (Pin 1) | Status / DLM Indicator |
+| **Servo CH0** | TIM2_CH1 | PA0 | |
+| **Servo CH1** | TIM2_CH2 | PA1 | |
+| **Servo CH2** | TIM2_CH4 | PA3 | |
+| **Servo CH3** | TIM1_CH2 | PC1 | Full Remap 適用 |
+| **UART_A** | USART2 | PA2 | 1-Wire モード |
+| **UART_B** | USART4 | PA5 | 1-Wire モード / Partial Remap 1 |
+| **V_SENSE** | ADC_IN6 | PA6 | 電圧監視 (5.1k/1k分圧) |
+| **T_SENSE** | ADC_IN9 | PB1 | 温度監視 (NTC 22k) |
+| **I_SENSE** | OPA2 / ADC_IN4 | PA7(+) / PA4(O) | 電流監視 (10mOhm / PGA x32) |
+| **LED** | GPIO | PB12 | ステータス表示 (Active-High) |
+| **1ms Tick** | TIM3 | 内部 | 時間管理・DLMカウントダウン用 |
 
-## 2. OPA2 & Current Sensing
-- **PGA Mode**: Gain x32 (`NSEL2 = 111`, `FB_EN2 = 1`).
-- **Internal Path**: `MODE2 = 0` to drive internal PA4/ADC_IN4.
-- **GPIO**: PA4 must be configured as `GPIO_Mode_AIN` (even if NC) to ensure ADC connectivity.
+## 2. UART 構成とリマップ
+- **USART2 (PA2)**: デフォルト設定。`HDSEL` ビットにより 1-Wire モードで使用。
+- **USART4 (PA5)**: `AFIO_PCFR1` の `USART4_REMAP` ビットを `001` に設定し、TX 機能を PA5 に割り当て。同様に `HDSEL` で 1-Wire 運用。
+- **パケットルーティング**: 受信したパケットのターゲットIDが自ノードでない場合、受信したポート以外（UART2, UART4, USB）へパケットをブリッジします。
 
-## 3. USART2 & Remapping
-- **Conflict**: Default USART2_RX is PA3, which is needed for Servo CH2.
-- **Solution**: Set `AFIO_PCFR1` to remap USART2_RX to **PA5**.
-- **Mode**: 1-Wire Half-duplex (`HDSEL=1`) on PA2 if required, but PA2/PA5 separate pins are also possible once remapped.
+## 3. OPA2 と電流計測
+- **構成**: PGA モード、ゲイン x32。
+- **ピン競合回避**: 
+  - `MODE2 = 0` により OPA2 出力を内部の PA4 (ADC_IN4) に固定し、USART2 で使用する PA2 を解放。
+  - `NSEL2 = 111` により負入力を PA5 から切り離し、USART4 で使用する PA5 を解放。
 
-## 4. Initialization Sequence
-1. **Clocks**: Enable GPIOA, B, C, AFIO, TIM1, TIM2, ADC1, OPA.
-2. **AFIO**: 
-   - Remap TIM1 to PC1.
-   - Remap USART2 RX to PA5.
-3. **OPA2**: Configure as PGA x32, output to PA4.
-4. **ADC**: Initialize with channels 4, 6, 9.
-5. **GPIO**: Set PA4, PA6, PA7, PB1 to `AIN`.
-6. **PWM**: Initialize TIM1/TIM2.
+## 4. 時間管理
+- **TIM3**: 1ms 周期の割り込みを生成。
+- **用途**: センサーデータの受信タイムアウト監視、DLM（ISPモード）移行への秒数カウント、将来的な時間ベースの制御用。
+- **Delay**: 標準の `Delay_Ms` は SysTick を停止させるため、経過時間の計測には TIM3 のカウント（`g_ms_ticks`）を使用すること。
 
-## 5. Firmware Update (DLM)
-- **Mechanism**: Software Reset to System Bootloader.
-- **Trigger**: UART Command `0xF0` (DLM).
-- **Behavior**:
-    1.  Upon receiving `0xF0`, the board enters "Armed" state.
-    2.  Status LED (PB12) blinks rapidly (5Hz) for 2 seconds as a warning.
-    3.  Board unlocks BOOT config, sets `BOOT_MODE` bit, and performs a system reset via PFIC.
-    4.  Device re-enumerates as WCH ISP device (`VID: 0x1A86, PID: 0x55E0`).
-- **Tooling**: `wchisp` (Rust-based) or WCHISPTool.
-- **Driver Note**: On Windows, `wchisp` requires WinUSB driver for `1a86:55e0`. Use Zadig to install if not detected.
+## 5. ファームウェアアップデート (DLM)
+- **トリガー**: UART コマンド `0xF0`。
+- **シーケンス**:
+    1. `0xF0` 受信後、`g_dlm_requested` フラグをセット。
+    2. LED が高速点滅 (5Hz)。
+    3. 約2秒後、ソフトウェアリセットを実行し、System Bootloader (ISP) モードへ移行。
+- **ツール**: `wchisp` または `WCHISPTool`。

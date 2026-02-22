@@ -191,15 +191,15 @@ void UART2_DMAInit( uint8_t type, uint8_t *pbuf, uint32_t len )
 
 void UART2_Init( uint8_t mode, uint32_t baudrate, uint8_t stopbits, uint8_t parity )
 {
+    // Disable DMA for RX to allow CPU polling in main loop
     USART_DMACmd( USART2, USART_DMAReq_Rx, DISABLE );
     DMA_Cmd( DMA1_Channel6, DISABLE );
     DMA_Cmd( DMA1_Channel7, DISABLE );
-    // Initialize USART2 in 1-Wire mode (always for this board)
+    
+    // Initialize USART2 in 1-Wire mode
     UART_CfgInit( USART2, baudrate, stopbits, parity, 1 );
     
-    UART2_DMAInit( 0, &UART2_Tx_Buf[ 0 ], 0 );
-    UART2_DMAInit( 1, &UART2_Rx_Buf[ 0 ], DEF_UARTx_RX_BUF_LEN );
-    USART_DMACmd( USART2, USART_DMAReq_Rx, ENABLE );
+    // Para init only, no DMA RX enablement
     UART2_ParaInit( mode );
 }
 

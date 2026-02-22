@@ -27,7 +27,7 @@ typedef enum {
 
 typedef struct {
     State_t state;
-    uint8_t buf[64];
+    uint8_t buf[128];
     uint8_t len;
     uint8_t data_idx;
     uint8_t target_id;
