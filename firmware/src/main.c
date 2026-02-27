@@ -104,8 +104,15 @@ int main(void) {
         if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET) {
             Process_Byte(IF_UART2, USART_ReceiveData(USART2));
         }
+        if (USART_GetFlagStatus(USART2, USART_FLAG_ORE) != RESET) {
+            USART_ReceiveData(USART2); // Clear ORE by reading DR
+        }
+
         if (USART_GetFlagStatus(USART4, USART_FLAG_RXNE) != RESET) {
             Process_Byte(IF_UART4, USART_ReceiveData(USART4));
+        }
+        if (USART_GetFlagStatus(USART4, USART_FLAG_ORE) != RESET) {
+            USART_ReceiveData(USART4); // Clear ORE by reading DR
         }
     }
 }
