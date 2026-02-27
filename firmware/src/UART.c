@@ -80,12 +80,6 @@ void UART_CfgInit( USART_TypeDef *USARTx, uint32_t baudrate, uint8_t stopbits, u
         GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
         GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP; 
         GPIO_Init( GPIOA, &GPIO_InitStructure );
-
-        // Force PA3 to AIN to disconnect logical RX from PWM noise
-        // (USART2 still receives from PA2 in 1-Wire HDSEL mode)
-        GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_3;
-        GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AIN;
-        GPIO_Init( GPIOA, &GPIO_InitStructure );
         
         // Enable Half-Duplex mode
         USARTx->CTLR3 |= USART_CTLR3_HDSEL; 
