@@ -86,12 +86,17 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 uint16_t v = Get_ADC_Val(ADC_CH_VSENSE);
                 uint16_t t = Get_ADC_Val(ADC_CH_TEMPSENSE);
                 uint16_t c = Get_ADC_Val(ADC_CH_CURSENSE);
-                uint8_t res[7];
+                uint8_t res[15];
                 res[0] = 0x00; // Type All
                 res[1] = v >> 8; res[2] = v & 0xFF;
                 res[3] = t >> 8; res[4] = t & 0xFF;
                 res[5] = c >> 8; res[6] = c & 0xFF;
-                Send_Packet(source_iface, source, g_device_id, 0x82, res, 7);
+                // Servo Feedback
+                res[7] = g_servo_feedback[0] >> 8; res[8] = g_servo_feedback[0] & 0xFF;
+                res[9] = g_servo_feedback[1] >> 8; res[10] = g_servo_feedback[1] & 0xFF;
+                res[11] = g_servo_feedback[2] >> 8; res[12] = g_servo_feedback[2] & 0xFF;
+                res[13] = g_servo_feedback[3] >> 8; res[14] = g_servo_feedback[3] & 0xFF;
+                Send_Packet(source_iface, source, g_device_id, 0x82, res, 15);
             }
             break;
         case 0x03: // SyncWrite (All 4 Servos)

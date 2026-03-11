@@ -1,4 +1,4 @@
-# UART Four Servo Control Board 通信プロトコル仕様 (v2.1)
+# UART Four Servo Control Board 通信プロトコル仕様 (v2.2)
 
 ## 1. 物理層
 - **通信方式**: 1-Wire 半二重 UART (Ring Bus 構成)
@@ -29,12 +29,19 @@
 - **Position**: 500 - 2500 (μs)
 
 ### 0x02: Read (センサー読み出し)
-電圧・温度・電流情報を要求します。
+システム全体のセンサー情報（電圧・温度・電流・サーボ状態）を要求します。
 - **Request Data**: `[Type (1 byte)]` (0: All)
-- **Response Data (0x82)**: `[Type] [Volt H] [Volt L] [Temp H] [Temp L] [Curr H] [Curr L]`
-  - 電圧: mV単位
-  - 温度: ADC生の値をベースにした計算値
-  - 電流: mA単位
+- **Response Data (0x82)**: 15 bytes
+  - `[0]`: Type (0: All)
+  - `[1:2]`: Bus Voltage (mV)
+  - `[3:4]`: Board Temp (ADC Raw)
+  - `[5:6]`: Total Current (mA)
+  - `[7:8]`: Servo CH0 Feedback (ADC Raw)
+  - `[9:10]`: Servo CH1 Feedback (ADC Raw)
+  - `[11:12]`: Servo CH2 Feedback (ADC Raw)
+  - `[13:14]`: Servo CH3 Feedback (ADC Raw)
+- **サンプリング**: サーボフィードバックは PWM 周期の中間（10ms経過時）に一時的に GPIO をアナログ入力に切り替えて取得されます。
+- **分圧回路**: サーボフィードバック端子には 2.7k (信号側) : 3.3k (GND側) の分圧回路が搭載されており、ADC 入力電圧は約 0.55 倍（V_FB * 0.55）に抑制されます。
 
 ### 0x03: SyncWrite (全軸一括設定)
 4つのサーボ位置を同時に設定します。
