@@ -3,17 +3,17 @@
 #include "adc.h"
 #include "UART.h"
 #include "usb_pd.h"
+#include "config.h"
 #include <string.h>
 #include <stdio.h>
 
-static uint8_t g_device_id = 0x01;
 static Parser_t g_parsers[4];
 
 volatile uint8_t g_dlm_requested = 0;
 volatile uint8_t g_led_duty = 0;
 
 void Protocol_Init(uint8_t device_id) {
-    g_device_id = device_id;
+    Config_Load(); // Load settings from flash
     g_dlm_requested = 0;
     g_led_duty = 0;
     memset(g_parsers, 0, sizeof(g_parsers));
@@ -91,12 +91,14 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 res[1] = v >> 8; res[2] = v & 0xFF;
                 res[3] = t >> 8; res[4] = t & 0xFF;
                 res[5] = c >> 8; res[6] = c & 0xFF;
-                // Servo Feedback
-                res[7] = g_servo_feedback[0] >> 8; res[8] = g_servo_feedback[0] & 0xFF;
-                res[9] = g_servo_feedback[1] >> 8; res[10] = g_servo_feedback[1] & 0xFF;
-                res[11] = g_servo_feedback[2] >> 8; res[12] = g_servo_feedback[2] & 0xFF;
-                res[13] = g_servo_feedback[3] >> 8; res[14] = g_servo_feedback[3] & 0xFF;
-                Send_Packet(source_iface, source, g_device_id, 0x82, res, 15);
+                // Servo Feedback - Now calculates Microseconds
+                for(int i=0; i<4; i++) {
+                    float pulse = (float)g_servo_feedback[i] * g_config.cal[i].slope + g_config.cal[i].intercept;
+                    uint16_t pulse16 = (uint16_t)pulse;
+                    res[7 + i*2] = pulse16 >> 8;
+                    res[8 + i*2] = pulse16 & 0xFF;
+                }
+                Send_Packet(source_iface, source, g_config.device_id, 0x82, res, 15);
             }
             break;
         case 0x03: // SyncWrite (All 4 Servos)
@@ -108,7 +110,8 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
             break;
         case 0x04: // CfgWrite
             if (len >= 2 && data[0] == 0x01) { // Change ID
-                g_device_id = data[1];
+                g_config.device_id = data[1];
+                Config_Save();
             }
             break;
         case 0x05: // STATIC_LED
@@ -120,6 +123,34 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
             if (len >= 2) {
                 uint16_t mv = (data[0] << 8) | data[1];
                 USB_PD_Request_Voltage(mv);
+            }
+            break;
+        case 0x07: // Set Calibration (13 bytes: CH, Slope, Intercept, Min, Max)
+            if (len >= 13) {
+                uint8_t ch = data[0];
+                if (ch < 4) {
+                    memcpy(&g_config.cal[ch].slope, &data[1], 4);
+                    memcpy(&g_config.cal[ch].intercept, &data[5], 4);
+                    g_config.cal[ch].min_pulse = (data[9] << 8) | data[10];
+                    g_config.cal[ch].max_pulse = (data[11] << 8) | data[12];
+                    Config_Save();
+                }
+            }
+            break;
+        case 0x08: // Get Calibration (1 byte: CH)
+            if (len >= 1) {
+                uint8_t ch = data[0];
+                if (ch < 4) {
+                    uint8_t res[13];
+                    res[0] = ch;
+                    memcpy(&res[1], &g_config.cal[ch].slope, 4);
+                    memcpy(&res[5], &g_config.cal[ch].intercept, 4);
+                    res[9] = g_config.cal[ch].min_pulse >> 8;
+                    res[10] = g_config.cal[ch].min_pulse & 0xFF;
+                    res[11] = g_config.cal[ch].max_pulse >> 8;
+                    res[12] = g_config.cal[ch].max_pulse & 0xFF;
+                    Send_Packet(source_iface, source, g_config.device_id, 0x88, res, 13);
+                }
             }
             break;
         case 0xF0: // DLM (Start Countdown to ISP)
@@ -165,7 +196,7 @@ void Process_Byte(Interface_t iface, uint8_t b) {
             break;
         case STATE_CRC:
             if (b == crc8(p->buf, p->len - 1)) {
-                if (p->target_id == g_device_id || p->target_id == BROADCAST_ID) {
+                if (p->target_id == g_config.device_id || p->target_id == BROADCAST_ID) {
                     Execute_Command(iface, p->target_id, p->source_id, p->cmd, &p->buf[5], p->expected_len);
                 } else {
                     Forward_Packet(iface, p->buf, p->len);

@@ -76,6 +76,9 @@ void Update_Servo_Feedback(void) {
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
     GPIO_Init(GPIOC, &GPIO_InitStructure);
 
+    // Settling delay
+    Delay_Us(10);
+
     // 2. Sample Each Channel
     g_servo_feedback[0] = Get_ADC_Val(ADC_CH_SERVO0);
     g_servo_feedback[1] = Get_ADC_Val(ADC_CH_SERVO1);

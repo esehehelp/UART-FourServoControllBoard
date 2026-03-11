@@ -1,8 +1,11 @@
 #include "servo.h"
+#include "config.h"
 
 void Set_Servo(uint8_t idx, uint16_t pos) {
-    if (pos < 500) pos = 500;
-    if (pos > 2500) pos = 2500;
+    if (idx >= 4) return;
+    if (pos < g_config.cal[idx].min_pulse) pos = g_config.cal[idx].min_pulse;
+    if (pos > g_config.cal[idx].max_pulse) pos = g_config.cal[idx].max_pulse;
+    
     switch(idx) {
         case 0: TIM_SetCompare1(TIM2, pos); break;
         case 1: TIM_SetCompare2(TIM2, pos); break;
