@@ -123,8 +123,18 @@ func (a *App) updateLoop() {
 		case <-ticker.C:
 			data := a.ctrl.GetSensorData()
 			a.statusBar.UpdateData(data)
+			
+			// Update graphs
+			times, volts, currs, temps, fbv := a.ctrl.GetPlotData()
+			a.updateGraphs(times, volts, currs, temps, fbv)
 		}
 	}
+}
+
+// updateGraphs updates the graph displays
+func (a *App) updateGraphs(times, volts, currs, temps []float64, fbv [4][]float64) {
+	// This would update the plot canvases
+	// Implementation depends on how we integrate graphs with Fyne
 }
 
 // Callbacks
@@ -137,6 +147,8 @@ func (a *App) onServoSet(ch uint8, us uint16) {
 func (a *App) onLEDSet(duty uint8) {
 	if err := a.ctrl.SetLED(duty); err != nil {
 		a.logView.AddLog(fmt.Sprintf("❌ LED error: %v", err))
+	} else {
+		a.logView.AddLog(fmt.Sprintf("✓ LED duty set to %d", duty))
 	}
 }
 

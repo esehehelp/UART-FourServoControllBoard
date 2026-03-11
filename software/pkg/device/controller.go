@@ -115,6 +115,12 @@ func (c *Controller) RequestSensorRead() error {
 	return c.sm.Send(pkt)
 }
 
+// RequestCalibrationSave sends calibration save command
+func (c *Controller) RequestCalibrationSave(data []uint8) error {
+	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_CAL_SAVE, data)
+	return c.sm.Send(pkt)
+}
+
 // processorLoop handles incoming packets and periodic sensor reads
 func (c *Controller) processorLoop() {
 	ticker := time.NewTicker(time.Duration(config.UPDATE_INTERVAL_MS) * time.Millisecond)

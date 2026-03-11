@@ -254,3 +254,79 @@ func NewPDControl(onSet func(millivolts uint16)) *PDControl {
 func (pc *PDControl) Container() *fyne.Container {
 	return pc.box
 }
+
+// CalibrationControl provides calibration UI
+type CalibrationControl struct {
+	channelSelect *widget.Select
+	startBtn      *widget.Button
+	stopBtn       *widget.Button
+	statusLabel   *canvas.Text
+	onStart       func(ch uint8) error
+	onStop        func()
+	box           *fyne.Container
+}
+
+// NewCalibrationControl creates calibration control widget
+func NewCalibrationControl(onStart func(ch uint8) error, onStop func()) *CalibrationControl {
+	cc := &CalibrationControl{
+		onStart: onStart,
+		onStop:  onStop,
+	}
+
+	cc.statusLabel = canvas.NewText("Ready", color.White)
+	cc.statusLabel.TextSize = 12
+
+	cc.channelSelect = widget.NewSelect(
+		[]string{"CH0", "CH1", "CH2", "CH3"},
+		func(s string) {},
+	)
+	cc.channelSelect.SetSelected("CH0")
+	cc.channelSelect.PlaceHolder = "Select channel"
+
+	cc.startBtn = widget.NewButton("Start Calibration", func() {
+		selected := cc.channelSelect.Selected
+		var ch uint8
+		fmt.Sscanf(selected, "CH%d", &ch)
+		if onStart != nil {
+			if err := onStart(ch); err != nil {
+				cc.statusLabel.Text = fmt.Sprintf("Error: %v", err)
+				cc.statusLabel.Color = color.NRGBA{R: 255, A: 255}
+			} else {
+				cc.statusLabel.Text = "Calibrating..."
+				cc.statusLabel.Color = color.NRGBA{R: 255, G: 165, A: 255}
+			}
+			cc.statusLabel.Refresh()
+		}
+	})
+
+	cc.stopBtn = widget.NewButton("Stop", func() {
+		if onStop != nil {
+			onStop()
+		}
+		cc.statusLabel.Text = "Stopped"
+		cc.statusLabel.Color = color.NRGBA{R: 255, A: 255}
+		cc.statusLabel.Refresh()
+	})
+
+	cc.box = container.NewVBox(
+		canvas.NewText("Calibration", color.White),
+		cc.statusLabel,
+		cc.channelSelect,
+		cc.startBtn,
+		cc.stopBtn,
+	)
+
+	return cc
+}
+
+// UpdateStatus updates calibration status
+func (cc *CalibrationControl) UpdateStatus(msg string, col color.Color) {
+	cc.statusLabel.Text = msg
+	cc.statusLabel.Color = col
+	cc.statusLabel.Refresh()
+}
+
+// Container returns the UI container
+func (cc *CalibrationControl) Container() *fyne.Container {
+	return cc.box
+}
