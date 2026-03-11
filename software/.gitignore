@@ -1,0 +1,55 @@
+# Build artifacts
+bin/
+dist/
+
+# Go build cache
+/.cache
+*.o
+*.a
+*.so
+*.dylib
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.Python
+.venv/
+env/
+venv/
+
+# Temporary files
+*.tmp
+*.bak
+.#*
