@@ -38,10 +38,11 @@ func (sb *StatusBar) UpdateStatus(msg string, col color.Color) {
 	sb.statusLabel.Refresh()
 }
 
-// UpdateData updates the sensor data label
+// UpdateData updates the sensor data label (must be called from Fyne main thread)
 func (sb *StatusBar) UpdateData(data device.SensorData) {
-	sb.dataLabel.Text = fmt.Sprintf("V: %.2fV  I: %.0fmA  T: %.1f°C", 
+	text := fmt.Sprintf("V: %.2fV  I: %.0fmA  T: %.1f°C", 
 		data.Voltage, data.Current, data.Temp)
+	sb.dataLabel.Text = text
 	sb.dataLabel.Refresh()
 }
 
@@ -85,29 +86,6 @@ func (lv *LogViewer) Clear() {
 // Container returns the UI container
 func (lv *LogViewer) Container() *fyne.Container {
 	return lv.box
-}
-
-// GraphCanvas is a placeholder for graph rendering
-type GraphCanvas struct {
-	rect *canvas.Rectangle
-	box         *fyne.Container
-}
-
-// NewGraphCanvas creates a new graph canvas
-func NewGraphCanvas() *GraphCanvas {
-	rect := canvas.NewRectangle(color.NRGBA{G: 40, B: 40, A: 255})
-	rect.SetMinSize(fyne.NewSize(400, 600))
-
-	gc := &GraphCanvas{
-		rect: rect,
-		box:  container.NewVBox(rect),
-	}
-	return gc
-}
-
-// Container returns the UI container
-func (gc *GraphCanvas) Container() *fyne.Container {
-	return gc.box
 }
 
 // ServoControl provides servo slider controls

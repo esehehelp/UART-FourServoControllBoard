@@ -18,8 +18,8 @@ import (
 
 // App manages the main application state
 type App struct {
-	sm       *serial.Manager
-	ctrl     *device.Controller
+	sm        *serial.Manager
+	ctrl      *device.Controller
 	statusBar *ui.StatusBar
 	logView   *ui.LogViewer
 	servoCtl  *ui.ServoControl
@@ -27,6 +27,7 @@ type App struct {
 	pdCtl     *ui.PDControl
 	graphCtl  *ui.GraphCanvas
 	done      chan struct{}
+	fyneApp   fyne.App
 }
 
 // NewApp creates a new application
@@ -56,8 +57,8 @@ func NewApp() *App {
 
 // Run starts the application
 func (a *App) Run() {
-	fyneApp := app.New()
-	mainWin := fyneApp.NewWindow("Servo Controller")
+	a.fyneApp = app.New()
+	mainWin := a.fyneApp.NewWindow("Servo Controller")
 	mainWin.Resize(fyne.NewSize(1200, 800))
 
 	// Start serial manager
@@ -93,14 +94,29 @@ func (a *App) Run() {
 
 	mainWin.SetContent(mainLayout)
 
-	// Start UI update loop
-	go a.updateLoop()
-
 	// Handle window close
 	mainWin.SetOnClosed(func() {
 		close(a.done)
-		fyneApp.Quit()
+		a.fyneApp.Quit()
 	})
+
+	// Create a timer for UI updates in the main Fyne thread
+	updateTicker := time.NewTicker(time.Duration(config.UPDATE_INTERVAL_MS) * time.Millisecond)
+	go func() {
+		for {
+			select {
+			case <-a.done:
+				updateTicker.Stop()
+				return
+			case <-updateTicker.C:
+				data := a.ctrl.GetSensorData()
+				a.statusBar.UpdateData(data)
+
+				times, volts, currs, temps, fbv := a.ctrl.GetPlotData()
+				a.updateGraphs(times, volts, currs, temps, fbv)
+			}
+		}
+	}()
 
 	mainWin.ShowAndRun()
 }
@@ -111,30 +127,14 @@ func (a *App) Stop() {
 	a.sm.Stop()
 }
 
-// updateLoop periodically updates UI with sensor data
-func (a *App) updateLoop() {
-	ticker := time.NewTicker(time.Duration(config.UPDATE_INTERVAL_MS) * time.Millisecond)
-	defer ticker.Stop()
 
-	for {
-		select {
-		case <-a.done:
-			return
-		case <-ticker.C:
-			data := a.ctrl.GetSensorData()
-			a.statusBar.UpdateData(data)
-			
-			// Update graphs
-			times, volts, currs, temps, fbv := a.ctrl.GetPlotData()
-			a.updateGraphs(times, volts, currs, temps, fbv)
-		}
-	}
-}
 
 // updateGraphs updates the graph displays
 func (a *App) updateGraphs(times, volts, currs, temps []float64, fbv [4][]float64) {
-	// This would update the plot canvases
-	// Implementation depends on how we integrate graphs with Fyne
+	a.graphCtl.UpdateVoltage(volts)
+	a.graphCtl.UpdateCurrent(currs)
+	a.graphCtl.UpdateTemperature(temps)
+	a.graphCtl.UpdateFeedbackVoltages(fbv)
 }
 
 // Callbacks

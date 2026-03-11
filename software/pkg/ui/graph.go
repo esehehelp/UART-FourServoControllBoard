@@ -5,18 +5,85 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
 )
 
-// LineChart renders a simple line chart using Fyne Canvas
+// GraphCanvas displays sensor data graphs
+type GraphCanvas struct {
+	voltageChart *LineChart
+	currentChart *LineChart
+	tempChart    *LineChart
+	fbvCharts    [4]*LineChart
+	box          *fyne.Container
+}
+
+// NewGraphCanvas creates a new graph canvas
+func NewGraphCanvas() *GraphCanvas {
+	gc := &GraphCanvas{
+		voltageChart: NewLineChart(-0.5, 25, color.NRGBA{R: 100, G: 200, B: 255, A: 255}),
+		currentChart: NewLineChart(-100, 5000, color.NRGBA{R: 255, G: 100, B: 100, A: 255}),
+		tempChart:    NewLineChart(0, 80, color.NRGBA{R: 255, G: 150, B: 0, A: 255}),
+	}
+
+	// Create feedback voltage charts for each servo
+	colors := [4]color.Color{
+		color.NRGBA{R: 150, G: 255, B: 100, A: 255},
+		color.NRGBA{R: 100, G: 255, B: 200, A: 255},
+		color.NRGBA{R: 200, G: 100, B: 255, A: 255},
+		color.NRGBA{R: 255, G: 200, B: 100, A: 255},
+	}
+	for i := 0; i < 4; i++ {
+		gc.fbvCharts[i] = NewLineChart(0, 5, colors[i])
+	}
+
+	// Build UI
+	gc.box = container.NewVBox(
+		canvas.NewText("Voltage (V)", color.White),
+		gc.voltageChart.GetContainer(),
+		canvas.NewText("Current (mA)", color.White),
+		gc.currentChart.GetContainer(),
+		canvas.NewText("Temperature (°C)", color.White),
+		gc.tempChart.GetContainer(),
+	)
+
+	return gc
+}
+
+// UpdateVoltage updates voltage chart
+func (gc *GraphCanvas) UpdateVoltage(data []float64) {
+	gc.voltageChart.SetData(data)
+}
+
+// UpdateCurrent updates current chart
+func (gc *GraphCanvas) UpdateCurrent(data []float64) {
+	gc.currentChart.SetData(data)
+}
+
+// UpdateTemperature updates temperature chart
+func (gc *GraphCanvas) UpdateTemperature(data []float64) {
+	gc.tempChart.SetData(data)
+}
+
+// UpdateFeedbackVoltages updates feedback voltage charts
+func (gc *GraphCanvas) UpdateFeedbackVoltages(fbv [4][]float64) {
+	for i := 0; i < 4; i++ {
+		gc.fbvCharts[i].SetData(fbv[i])
+	}
+}
+
+// Container returns the UI container
+func (gc *GraphCanvas) Container() *fyne.Container {
+	return gc.box
+}
+
+// LineChart is a simple line chart
 type LineChart struct {
-	canvas    fyne.CanvasObject
 	data      []float64
 	minVal    float64
 	maxVal    float64
-	width     float32
-	height    float32
 	lineColor color.Color
 	bgColor   color.Color
+	box       *fyne.Container
 }
 
 // NewLineChart creates a new line chart
@@ -25,244 +92,86 @@ func NewLineChart(minVal, maxVal float64, lineColor color.Color) *LineChart {
 		minVal:    minVal,
 		maxVal:    maxVal,
 		data:      make([]float64, 0),
-		width:     400,
-		height:    150,
 		lineColor: lineColor,
-		bgColor:   color.NRGBA{R: 30, G: 30, B: 30, A: 255},
+		bgColor:   color.NRGBA{R: 20, G: 20, B: 20, A: 255},
 	}
-	lc.refresh()
+	lc.box = container.NewVBox(canvas.NewRectangle(lc.bgColor))
+	lc.box.Objects[0].(*canvas.Rectangle).SetMinSize(fyne.NewSize(400, 120))
 	return lc
 }
 
-// SetData updates chart data and triggers redraw
+// SetData updates chart data
 func (lc *LineChart) SetData(data []float64) {
 	lc.data = make([]float64, len(data))
 	copy(lc.data, data)
 	lc.refresh()
 }
 
-// SetSize sets the chart size
-func (lc *LineChart) SetSize(w, h float32) {
-	lc.width = w
-	lc.height = h
-	lc.refresh()
-}
-
-// GetCanvas returns the underlying canvas object
-func (lc *LineChart) GetCanvas() fyne.CanvasObject {
-	return lc.canvas
-}
-
 // refresh redraws the chart
 func (lc *LineChart) refresh() {
-	if lc.canvas == nil {
-		lc.canvas = canvas.NewRectangle(lc.bgColor)
+	objects := []fyne.CanvasObject{
+		canvas.NewRectangle(lc.bgColor),
 	}
 
-	// Update background
-	if bg, ok := lc.canvas.(*canvas.Rectangle); ok {
-		bg.FillColor = lc.bgColor
+	if len(lc.data) > 1 {
+		objects = append(objects, lc.drawLines()...)
 	}
 
-	// For now, just render background with border
-	// More sophisticated rendering would involve plotting points
-	// This is a simplified version
+	lc.box.Objects = objects
+	lc.box.Refresh()
 }
 
-// SimpleAxisPlot is a lightweight 2D plot using Fyne primitives
-type SimpleAxisPlot struct {
-	container   fyne.Container
-	lines       []fyne.CanvasObject
-	data        []float64
-	timeData    []float64
-	minVal      float64
-	maxVal      float64
-	timeMin     float64
-	timeMax     float64
-	width       float32
-	height      float32
-	lineColor   color.Color
-	gridColor   color.Color
-	axisColor   color.Color
-	marginLeft  float32
-	marginRight float32
-	marginTop   float32
-	marginBot   float32
-}
+// drawLines draws lines connecting data points
+func (lc *LineChart) drawLines() []fyne.CanvasObject {
+	const width = float32(400)
+	const height = float32(120)
+	const padding = float32(20)
 
-// NewSimpleAxisPlot creates a new plot
-func NewSimpleAxisPlot(minVal, maxVal float64, lineColor color.Color) *SimpleAxisPlot {
-	return &SimpleAxisPlot{
-		minVal:     minVal,
-		maxVal:     maxVal,
-		width:      400,
-		height:     200,
-		lineColor:  lineColor,
-		gridColor:  color.NRGBA{R: 60, G: 60, B: 60, A: 255},
-		axisColor:  color.NRGBA{R: 200, G: 200, B: 200, A: 255},
-		marginLeft: 40,
-		marginRight: 20,
-		marginTop:  20,
-		marginBot:  40,
-		lines:      make([]fyne.CanvasObject, 0),
-	}
-}
+	plotWidth := width - 2*padding
+	plotHeight := height - 2*padding
+	dataLen := float32(len(lc.data))
 
-// SetData updates the plot data
-func (p *SimpleAxisPlot) SetData(timeData, valueData []float64) {
-	p.timeData = timeData
-	p.data = valueData
+	lines := make([]fyne.CanvasObject, 0)
 
-	if len(timeData) > 1 {
-		p.timeMin = timeData[0]
-		p.timeMax = timeData[len(timeData)-1]
+	if dataLen < 2 {
+		return lines
 	}
 
-	p.redraw()
-}
+	for i := 0; i < len(lc.data)-1; i++ {
+		fi := float32(i)
+		fi1 := float32(i + 1)
 
-// SetSize sets plot dimensions
-func (p *SimpleAxisPlot) SetSize(w, h float32) {
-	p.width = w
-	p.height = h
-	p.redraw()
-}
+		x1 := fi / (dataLen - 1) * plotWidth
+		x2 := fi1 / (dataLen - 1) * plotWidth
 
-// redraw redraws the plot
-func (p *SimpleAxisPlot) redraw() {
-	// Clear old lines
-	p.lines = p.lines[:0]
-
-	if len(p.data) == 0 || len(p.timeData) == 0 {
-		return
-	}
-
-	// Draw background
-	bg := canvas.NewRectangle(color.NRGBA{R: 25, G: 25, B: 25, A: 255})
-	bg.SetMinSize(fyne.NewSize(p.width, p.height))
-	p.lines = append(p.lines, bg)
-
-	// Draw grid lines (simplified)
-	plotWidth := p.width - p.marginLeft - p.marginRight
-	plotHeight := p.height - p.marginTop - p.marginBot
-
-	// Horizontal grid lines for values
-	numGridLines := 4
-	for i := 0; i <= numGridLines; i++ {
-		y := p.marginTop + float32(i)*(plotHeight/float32(numGridLines))
-		line := canvas.NewLine(p.gridColor)
-		line.Position1 = fyne.NewPos(p.marginLeft, y)
-		line.Position2 = fyne.NewPos(p.marginLeft+plotWidth, y)
-		line.StrokeWidth = 1
-		p.lines = append(p.lines, line)
-	}
-
-	// Draw data line
-	if len(p.data) > 1 {
-		timeRange := p.timeMax - p.timeMin
-		if timeRange <= 0 {
-			timeRange = 1
-		}
-
-		valueRange := p.maxVal - p.minVal
-		if valueRange <= 0 {
-			valueRange = 1
-		}
-
-		for i := 0; i < len(p.data)-1; i++ {
-			x1 := p.marginLeft + float32((p.timeData[i]-p.timeMin)/timeRange)*plotWidth
-			y1 := p.marginTop + plotHeight - float32((p.data[i]-p.minVal)/valueRange)*plotHeight
-
-			x2 := p.marginLeft + float32((p.timeData[i+1]-p.timeMin)/timeRange)*plotWidth
-			y2 := p.marginTop + plotHeight - float32((p.data[i+1]-p.minVal)/valueRange)*plotHeight
-
-			// Clamp values to visible range
-			y1 = clamp(y1, p.marginTop, p.marginTop+plotHeight)
-			y2 = clamp(y2, p.marginTop, p.marginTop+plotHeight)
-
-			line := canvas.NewLine(p.lineColor)
-			line.Position1 = fyne.NewPos(x1, y1)
-			line.Position2 = fyne.NewPos(x2, y2)
-			line.StrokeWidth = 2
-			p.lines = append(p.lines, line)
-		}
-	}
-
-	// Draw axes
-	axisX := canvas.NewLine(p.axisColor)
-	axisX.Position1 = fyne.NewPos(p.marginLeft, p.marginTop+plotHeight)
-	axisX.Position2 = fyne.NewPos(p.marginLeft+plotWidth, p.marginTop+plotHeight)
-	axisX.StrokeWidth = 2
-	p.lines = append(p.lines, axisX)
-
-	axisY := canvas.NewLine(p.axisColor)
-	axisY.Position1 = fyne.NewPos(p.marginLeft, p.marginTop)
-	axisY.Position2 = fyne.NewPos(p.marginLeft, p.marginTop+plotHeight)
-	axisY.StrokeWidth = 2
-	p.lines = append(p.lines, axisY)
-}
-
-// clamp clamps value between min and max
-func clamp(v, min, max float32) float32 {
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
-}
-
-// GetObjects returns canvas objects for rendering
-func (p *SimpleAxisPlot) GetObjects() []fyne.CanvasObject {
-	return p.lines
-}
-
-// PlotGrid is a grid of multiple plots
-type PlotGrid struct {
-	plots     []*SimpleAxisPlot
-	container *fyne.Container
-}
-
-// NewPlotGrid creates a grid of plots
-func NewPlotGrid() *PlotGrid {
-	return &PlotGrid{
-		plots: make([]*SimpleAxisPlot, 4),
-	}
-}
-
-// SetPlotData sets data for a specific plot
-func (pg *PlotGrid) SetPlotData(idx int, timeData, valueData []float64, minVal, maxVal float64) {
-	if idx >= len(pg.plots) {
-		return
-	}
-
-	if pg.plots[idx] == nil {
-		colors := []color.Color{
-			color.NRGBA{R: 255, G: 100, B: 100, A: 255}, // Red for voltage
-			color.NRGBA{R: 100, G: 150, B: 255, A: 255}, // Blue for current
-			color.NRGBA{R: 100, G: 255, B: 100, A: 255}, // Green for temp
-			color.NRGBA{R: 200, G: 100, B: 200, A: 255}, // Purple for FB
-		}
-		col := colors[idx%len(colors)]
-		pg.plots[idx] = NewSimpleAxisPlot(minVal, maxVal, col)
-	}
-
-	pg.plots[idx].SetData(timeData, valueData)
-}
-
-// Initialize initializes the grid for rendering
-func (pg *PlotGrid) Initialize() *fyne.Container {
-	items := make([]fyne.CanvasObject, 0)
-
-	for _, plot := range pg.plots {
-		if plot != nil {
-			plot.SetSize(400, 180)
-			for _, obj := range plot.GetObjects() {
-				items = append(items, obj)
+		norm := func(val float64) float32 {
+			if lc.maxVal <= lc.minVal {
+				return plotHeight / 2
 			}
+			ratio := (val - lc.minVal) / (lc.maxVal - lc.minVal)
+			if ratio < 0 {
+				ratio = 0
+			}
+			if ratio > 1 {
+				ratio = 1
+			}
+			return float32(ratio) * plotHeight
 		}
+
+		y1 := plotHeight - norm(lc.data[i])
+		y2 := plotHeight - norm(lc.data[i+1])
+
+		line := canvas.NewLine(lc.lineColor)
+		line.StrokeWidth = 2
+		line.Position1 = fyne.NewPos(padding+x1, padding+y1)
+		line.Position2 = fyne.NewPos(padding+x2, padding+y2)
+		lines = append(lines, line)
 	}
 
-	return nil // Will be rendered in main
+	return lines
+}
+
+// GetContainer returns the UI container
+func (lc *LineChart) GetContainer() *fyne.Container {
+	return lc.box
 }
