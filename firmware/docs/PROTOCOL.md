@@ -47,10 +47,13 @@
 デバイス自体の設定を変更します。
 - **Sub-Commands**:
   - `[0:1] = [0x01, NewID]`: デバイスIDを変更し、Flashに保存します。
+  - `[0:1] = [0x02, Role]`: デバイスのロールを変更し、Flashに保存します。
 
 ### 0x05: STATIC_LED (LED制御)
 基板上のインジケータLEDの輝度を設定します。
-- **Data**: 1 byte (0-255: PWM Duty)
+- **Data**: 1–2 bytes
+  - `[0]`: LED1 Duty (0-255, PWM)
+  - `[1]`: LED2 Duty (0-255, PWM) — 省略時は LED2 を変更しない
 
 ### 0x06: Set Voltage (USB PD PPS設定)
 USB PD PPS対応電源を使用している場合、供給電圧を変更します。
@@ -70,6 +73,10 @@ USB PD PPS対応電源を使用している場合、供給電圧を変更しま�
 保存されている設定を読み出します。
 - **Request Data**: 1 byte (Channel Index)
 - **Response Data (0x88)**: 13 bytes (0x07 と同形式)
+
+### 0x09: Servo Free (PWM停止)
+指定チャンネルのPWM出力を停止し、サーボを脱力させます。再度動かすには `0x01` または `0x03` を送信します。
+- **Data**: 1 byte (ch_mask: bit0=CH0, bit1=CH1, bit2=CH2, bit3=CH3)
 
 ### 0xF0: DLM (Download Mode)
 ブートローダー(ISP)モードへ移行するためのカウントダウンを開始します。
