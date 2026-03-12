@@ -13,6 +13,14 @@ static Parser_t g_parsers[4];
 
 volatile uint8_t g_dlm_requested = 0;
 
+// Teleoperate state (runtime, not persisted)
+typedef struct {
+    uint8_t active;
+    uint8_t channel_mask;
+} Teleoperate_t;
+
+static Teleoperate_t g_teleoperate = {0, 0};
+
 void Protocol_Init(uint8_t device_id) {
     Config_Load(); // Load settings from flash
     g_dlm_requested = 0;
@@ -86,12 +94,12 @@ void Forward_Packet(Interface_t source_iface, uint8_t *pkt, uint8_t len) {
 
 void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, uint8_t cmd, uint8_t *data, uint8_t len) {
     switch(cmd) {
-        case 0x01: // Write (Single Servo)
+        case CMD_WRITE_SERVO: // Write (Single Servo)
             if (len >= 3) {
                 Set_Servo(data[0], (data[1] << 8) | data[2]);
             }
             break;
-        case 0x02: // Read (Sensors)
+        case CMD_READ_SENSORS: // Read (Sensors)
             {
                 uint16_t v = Get_ADC_Val(ADC_CH_VSENSE);
                 uint16_t t = Get_ADC_Val(ADC_CH_TEMPSENSE);
@@ -108,17 +116,17 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                     res[7 + i*2] = pulse16 >> 8;
                     res[8 + i*2] = pulse16 & 0xFF;
                 }
-                Send_Packet(source_iface, source, g_config.device_id, 0x82, res, 15);
+                Send_Packet(source_iface, source, g_config.device_id, RSP_READ_SENSORS, res, 15);
             }
             break;
-        case 0x03: // SyncWrite (All 4 Servos)
+        case CMD_SYNC_WRITE: // SyncWrite (All 4 Servos)
             if (len >= 8) {
                 for(int i=0; i<4; i++) {
                     Set_Servo(i, (data[i*2] << 8) | data[i*2+1]);
                 }
             }
             break;
-        case 0x04: // CfgWrite
+        case CMD_CONFIG_WRITE: // CfgWrite
             if (len >= 2 && data[0] == 0x01) { // Change device_id
                 g_config.device_id = data[1];
                 Config_Save();
@@ -128,17 +136,17 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 Config_Save();
             }
             break;
-        case 0x05: // LED control (2-LED)
+        case CMD_LED_CONTROL: // LED control (2-LED)
             if (len >= 1) LED1_SetDuty(data[0]);
             if (len >= 2) LED2_SetDuty(data[1]);
             break;
-        case 0x06: // Set Voltage (PD PPS)
+        case CMD_SET_VOLTAGE: // Set Voltage (PD PPS)
             if (len >= 2) {
                 uint16_t mv = (data[0] << 8) | data[1];
                 USB_PD_Request_Voltage(mv);
             }
             break;
-        case 0x07: // Set Calibration (13 bytes: CH, Slope, Intercept, Min, Max)
+        case CMD_SET_CALIB: // Set Calibration (13 bytes: CH, Slope, Intercept, Min, Max)
             if (len >= 13) {
                 uint8_t ch = data[0];
                 if (ch < 4) {
@@ -150,7 +158,7 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 }
             }
             break;
-        case 0x08: // Get Calibration (1 byte: CH)
+        case CMD_GET_CALIB: // Get Calibration (1 byte: CH)
             if (len >= 1) {
                 uint8_t ch = data[0];
                 if (ch < 4) {
@@ -162,31 +170,46 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                     res[10] = g_config.cal[ch].min_pulse & 0xFF;
                     res[11] = g_config.cal[ch].max_pulse >> 8;
                     res[12] = g_config.cal[ch].max_pulse & 0xFF;
-                    Send_Packet(source_iface, source, g_config.device_id, 0x88, res, 13);
+                    Send_Packet(source_iface, source, g_config.device_id, RSP_GET_CALIB, res, 13);
                 }
             }
             break;
-        case 0x09: // Servo Free (PWM off) — ch_mask: bit0=CH0..bit3=CH3
+        case CMD_SERVO_FREE: // Servo Free (PWM off) — ch_mask: bit0=CH0..bit3=CH3
             if (len >= 1) {
                 Servo_Free(data[0]);
             }
             break;
-        case 0xA0: // Ping (Device Discovery)
+        case CMD_TELEOPERATE: // Teleoperate (MODE, CH_MASK)
+            if (len >= 2) {
+                uint8_t mode = data[0];
+                uint8_t ch_mask = data[1];
+                if (mode == 0x00) {
+                    // Deactivate teleoperate mode
+                    g_teleoperate.active = 0;
+                    g_teleoperate.channel_mask = 0;
+                } else if (mode == 0x01) {
+                    // Activate teleoperate mode
+                    g_teleoperate.active = 1;
+                    g_teleoperate.channel_mask = ch_mask & 0x0F; // Only 4 channels
+                }
+            }
+            break;
+        case CMD_PING: // Ping (Device Discovery)
             if (g_config.role == ROLE_HOST && source_iface == IF_USB) {
                 // Host received discovery request from USB → broadcast into ring
                 App_Trigger_Discovery();
             } else if (g_config.role == ROLE_DEVICE) {
                 // Device received Ping → reply with own device_id
                 uint8_t id = g_config.device_id;
-                Send_Packet(source_iface, source, g_config.device_id, 0xA1, &id, 1);
+                Send_Packet(source_iface, source, g_config.device_id, RSP_PONG, &id, 1);
             }
             break;
-        case 0xA1: // Pong (Discovery Response)
+        case CMD_PONG: // Pong (Discovery Response)
             if (g_config.role == ROLE_HOST && len >= 1) {
                 App_On_Pong(data[0]);
             }
             break;
-        case 0xF0: // DLM (Start Countdown to ISP)
+        case CMD_DLM: // DLM (Start Countdown to ISP)
             g_dlm_requested = 1;
             break;
     }
