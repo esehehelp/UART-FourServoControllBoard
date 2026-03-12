@@ -68,6 +68,48 @@ Packet header byte is `0xAA`. Key commands:
 
 Sensor response (`0x82`): 16-bit ADC values for voltage, temperature, current, and 4 feedback voltages.
 
+## Git / GitHub 運用ルール
+
+### ブランチ戦略
+
+- `main` — リリース済み安定版。直接 push 禁止。PR 経由でのみマージする。
+- `V0.x` — ハードウェアリビジョン単位の開発ブランチ（例: `V0.8`）。
+- `feature/<name>` — 実験的・破壊的変更用（例: `feature/usb-cdc-minimal`）。main / V0.x へのマージは動作確認後のみ。
+
+### コミット規則
+
+- メッセージ先頭にプレフィックスをつける: `feat:` / `fix:` / `docs:` / `hardware:` / `refactor:` / `test:`
+- 末尾に `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` を付与（Claude が関与した場合）
+- `firmware/` `software/` `hardware/` `docs/` の変更は原則として分けてコミットする
+- 実機なしで firmware/src/ のコードを変更してはならない（ビルド・動作確認ができないため）
+
+### PR ルール
+
+- base: `main`、head: `V0.x` または `feature/*`
+- PR 本文に以下を記載する:
+  - **Summary**: 変更内容の箇条書き
+  - **Version Matrix**: Hardware / Firmware / Software のバージョンと互換性
+  - **Known Open Issues**: マージ時点で未解決の重要 issue
+
+### Issue 運用
+
+- issue をクローズする前に、クローズ理由をコメントとして残す
+- 他 issue に統合してクローズする場合は「〇〇 に統合」と明記する
+- 実装方針は issue のコメントに追記し、コードを直接変更する前に合意を得る
+- 回路定数など根拠が必要な数値には必ずコメントで出典（ファイル名・行番号 or constants.md）を示す
+
+### リリース成果物
+
+GitHub Releases にビルド済みバイナリ・ファームウェア .hex・Gerber を配置する際は、リリースノートに以下を記載する:
+
+```
+Hardware: V0.x
+Firmware: V0.x.y
+Software: V0.x.y
+互換性: ○ / ✕
+既知の制限: ...
+```
+
 ## Firmware
 
 Built with PlatformIO targeting CH32X035F7P6. Key source files in `firmware/src/`:
