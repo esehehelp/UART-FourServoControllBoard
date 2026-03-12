@@ -1,0 +1,28 @@
+"""
+Pin Assignment - Verified from Source Code
+
+Source code verified pin assignments for CH32X035F7P6 (TSSOP-20)
+All peripheral mappings extracted from firmware source files.
+"""
+
+Pin,Port,MCU Function,Hardware Use,Peripheral,ADC Channel,Source File,Notes
+1,PB12,GPIO,LED1,GPIO_Out_PP,none,led.c:9,Active-High LED output
+2,PC14,GPIO,CC1,GPIO,none,protocol.h,"USB-PD CC1 (optional, not implemented)"
+3,PC15,GPIO,CC2,GPIO,none,protocol.h,"USB-PD CC2 (optional, not implemented)"
+4,PC3,GPIO,LED2,GPIO_Out_PP,none,led.c:16,"Active-Low; CMP1_N0 must be disabled (led.c:39)"
+5,PC1,TIM1_CH2,Servo CH3 PWM + FB,TIM1 (Full Remap),ADC_CH11,servo.c:45,Full Remap AFIO PCFR1[17:15]=011
+6,PA0,TIM2_CH1,Servo CH0 PWM + FB,TIM2_CH1,ADC_CH0,adc.h:12,Servo 0 output and feedback ADC
+7,PA1,TIM2_CH2,Servo CH1 PWM + FB,TIM2_CH2,ADC_CH1,adc.h:13,Servo 1 output and feedback ADC
+8,PA2,USART2_TX/RX,UART Ring (Upstream),USART2 (1-Wire),none,UART.c:L20,"1-Wire Ring topology Upstream; 115200 bps 8N1"
+9,PA3,TIM2_CH4,Servo CH2 PWM + FB,TIM2_CH4,ADC_CH3,adc.h:14,Servo 2 output and feedback ADC
+10,PA4,OPA2_OUT,Current Sense,OPA2 Output + ADC,ADC_CH4,adc.h:9,OPA2 current sense amplifier output
+11,PA5,USART4_TX/RX,UART Ring (Downstream),USART4 (Remap 001),none,UART.c:L45,"1-Wire Ring topology Downstream; Remap 001: AFIO PCFR1[4:3]=001"
+12,PA6,ADC input,Voltage Sense,ADC,ADC_CH6,adc.h:7,Power supply voltage measurement (6.1:1 divider)
+13,PA7,OPA2_P0,Current Sense Input,OPA2 Non-Inverting,none,adc.c:L20,Shunt resistor (20mΩ) output to OPA2 input
+14,PB1,ADC input,Temperature Sense,ADC,ADC_CH9,adc.h:8,NTC thermistor temperature measurement
+15,GND,Ground,Ground,Power,none,,-
+16,VDD,Supply,3.3V,Power,none,servo.c:36,"XC6206 LDO output (5-20V input → 3.3V)"
+17,PC16,USB,USB D-,USB,none,protocol.h,USB 2.0 Full-Speed
+18,PC17,USB,USB D+,USB,none,protocol.h,USB 2.0 Full-Speed
+19,PC18,SWD,Debug SWDIO,Debug (SWD),none,-,JTAG/SWD Debug Port
+20,PC19,SWD,Debug SWCLK,Debug (SWD),none,-,JTAG/SWD Debug Port
