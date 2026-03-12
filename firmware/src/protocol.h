@@ -8,26 +8,6 @@
 #define BROADCAST_ID 0xFF
 #define PKT_HEADER   0xAA
 
-// Command codes
-#define CMD_WRITE_SERVO      0x01
-#define CMD_READ_SENSORS     0x02
-#define CMD_SYNC_WRITE       0x03
-#define CMD_CONFIG_WRITE     0x04
-#define CMD_LED_CONTROL      0x05
-#define CMD_SET_VOLTAGE      0x06
-#define CMD_SET_CALIB        0x07
-#define CMD_GET_CALIB        0x08
-#define CMD_SERVO_FREE       0x09
-#define CMD_TELEOPERATE      0x0A
-#define CMD_PING             0xA0
-#define CMD_PONG             0xA1
-#define CMD_DLM              0xF0
-
-// Response codes
-#define RSP_READ_SENSORS     0x82
-#define RSP_GET_CALIB        0x88
-#define RSP_PONG             0xA1
-
 typedef enum {
     IF_USB,
     IF_UART2,
