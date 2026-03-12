@@ -7,6 +7,7 @@ void Config_SetDefault(void) {
     memset(&g_config, 0, sizeof(Config_t));
     g_config.magic = CONFIG_MAGIC;
     g_config.device_id = 0x01;
+    g_config.role = ROLE_DEVICE;
     for(int i=0; i<4; i++) {
         g_config.cal[i].slope = 1.0f;
         g_config.cal[i].intercept = 0.0f;

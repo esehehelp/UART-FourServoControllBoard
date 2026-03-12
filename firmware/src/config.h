@@ -6,6 +6,9 @@
 #define CONFIG_FLASH_ADDR  0x0800F000 // Last 4KB of Flash for settings
 #define CONFIG_MAGIC       0x43414C43 // "CALC"
 
+#define ROLE_DEVICE  0x00
+#define ROLE_HOST    0x01
+
 typedef struct {
     float slope;
     float intercept;
@@ -16,6 +19,8 @@ typedef struct {
 typedef struct {
     uint32_t magic;
     uint8_t device_id;
+    uint8_t role;        // ROLE_DEVICE or ROLE_HOST
+    uint8_t _pad[2];     // alignment
     ServoCal_t cal[4];
     uint32_t crc;
 } Config_t;

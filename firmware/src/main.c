@@ -4,11 +4,27 @@
 #include "servo.h"
 #include "adc.h"
 #include "protocol.h"
+#include "app.h"
 #include "dlm_jump.h"
 #include "usb_pd.h"
+#include "led.h"
+#include "usb_desc.h"
 #include <stdio.h>
 
 volatile uint32_t g_ms_ticks = 0;
+
+/* Build USB serial number string from chip unique ID (0x1FFFF7E8, 8 bytes)
+ * MySerNumInfo format: [len=0x22][type=0x03][16 hex chars in UTF-16LE] */
+static void USB_BuildSerialFromUID(void) {
+    static const char hex[] = "0123456789ABCDEF";
+    const uint8_t *uid = (const uint8_t *)0x1FFFF7E8;
+    for (int i = 0; i < 8; i++) {
+        MySerNumInfo[2 + i*4 + 0] = hex[(uid[i] >> 4) & 0xF];
+        MySerNumInfo[2 + i*4 + 1] = 0;
+        MySerNumInfo[2 + i*4 + 2] = hex[uid[i] & 0xF];
+        MySerNumInfo[2 + i*4 + 3] = 0;
+    }
+}
 volatile uint32_t g_dlm_timer = 0;
 
 void TIM3_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
@@ -41,10 +57,12 @@ int main(void) {
     USART_Printf_Init(115200);
     printf("UART 4-Servo Board v2.0 Startup\r\n");
 
+    USB_BuildSerialFromUID();
     USBFS_RCC_Init();
     USBFS_Device_Init(ENABLE, PWR_VDD_3V3);
 
     Protocol_Init(0x01);
+    App_Init();
     Servo_Init();
     ADC_Init_Custom();
     
@@ -54,23 +72,10 @@ int main(void) {
     USB_PD_Init();
     Timer3_Init();
 
-    // Initialize PB12 for Status LED
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-
-    // Startup Verification: Blink LED 3 times
-    for(int i=0; i<6; i++) {
-        GPIOB->OUTDR ^= GPIO_Pin_12;
-        Delay_Ms(100);
-    }
-    g_led_duty = 0;
+    LED_Init();
+    LED_StartupBlink();
 
     uint32_t last_ms = 0;
-    uint8_t soft_pwm_cnt = 0;
 
     while(1) {
         USB_PD_Process();
@@ -86,6 +91,8 @@ int main(void) {
                 Update_Servo_Feedback();
             }
 
+            App_Tick(now_ms);
+
             if (g_dlm_requested) {
                 if (g_dlm_timer == 0) g_dlm_timer = 2000;
                 if (g_dlm_timer <= 1800 && g_dlm_timer > 0) {
@@ -94,17 +101,7 @@ int main(void) {
             }
         }
 
-        // Soft PWM for LED (Run as fast as possible)
-        soft_pwm_cnt++;
-        uint8_t target_duty = g_led_duty;
-        
-        if (g_dlm_requested) {
-            // DLM Blink Overrides normal duty
-            target_duty = ((g_dlm_timer / 100) % 2) ? 255 : 0;
-        }
-
-        if (soft_pwm_cnt < target_duty) GPIOB->BSHR = GPIO_Pin_12;
-        else GPIOB->BCR = GPIO_Pin_12;
+        LED_Tick();
 
         // Poll UARTs
         if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET) {

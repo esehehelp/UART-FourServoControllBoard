@@ -62,6 +62,6 @@ extern const uint8_t MyCfgDescr[ ];
 extern const uint8_t MyLangDescr[ ];
 extern const uint8_t MyManuInfo[ ];
 extern const uint8_t MyProdInfo[ ];
-extern const uint8_t MySerNumInfo[ ];
+extern uint8_t MySerNumInfo[ ];
 
 #endif /* USER_USB_DESC_H_ */
