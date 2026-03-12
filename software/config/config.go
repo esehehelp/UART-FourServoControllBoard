@@ -24,6 +24,7 @@ const (
 	CMD_PD_VOLTAGE       = 0x06 // Set PD voltage [mv_h, mv_l]
 	CMD_CAL_SAVE         = 0x07 // Save calibration [ch, slope(4B), intercept(4B), min_h, min_l, max_h, max_l]
 	CMD_CAL_GET          = 0x08 // Get calibration [ch]
+	CMD_SERVO_FREE       = 0x09 // Free servo (PWM off) [ch_mask]
 )
 
 // Sensor types for CMD_SENSOR_READ
@@ -93,12 +94,17 @@ const (
 	TEMP_T0       = 298.15
 )
 
-// Calibration parameters
+// Calibration parameters (manual position calibration via PWM off)
 const (
-	CAL_RIPPLE_THRESHOLD = 0.1  // V
-	CAL_FB_CHANGE_MIN    = 0.01 // V
-	CAL_COARSE_STEP      = 100  // us
-	CAL_FINE_STEP        = 1    // us
-	CAL_WAIT_STABLE      = 800  // ms (wait after position change)
-	CAL_WAIT_MEASURE     = 400  // ms (wait before measurement)
+	// CAL_WAIT_CENTER_MS: settle time after moving to center (ms)
+	CAL_WAIT_CENTER_MS = 600
+	// CAL_SAMPLE_COUNT: number of FBV ADC readings to average per position
+	CAL_SAMPLE_COUNT = 5
+	// CAL_SAMPLE_INTERVAL_MS: interval between consecutive FBV samples (ms)
+	CAL_SAMPLE_INTERVAL_MS = 20
+	// CAL_PULSE_MIN / CAL_PULSE_MAX: reference pulse widths stored as the min/max
+	// position commands (µs). These define the commanded range that the firmware
+	// will use; the FBV recorded at each position provides the feedback mapping.
+	CAL_PULSE_MIN = 500
+	CAL_PULSE_MAX = 2500
 )
