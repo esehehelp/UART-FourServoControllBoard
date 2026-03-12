@@ -75,6 +75,7 @@ void UART_CfgInit( USART_TypeDef *USARTx, uint32_t baudrate, uint8_t stopbits, u
         // Remap USART2 to PA2/PA3 (Default: 000)
         AFIO->PCFR1 &= ~AFIO_PCFR1_USART2_REMAP;
 
+        // Configure PA2 as AF_PP (TX)
         GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_2;
         GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
         GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF_PP; 

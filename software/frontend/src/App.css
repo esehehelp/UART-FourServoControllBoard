@@ -1,0 +1,263 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #121212;
+  --surface: #1e1e1e;
+  --surface2: #2a2a2a;
+  --border: #333;
+  --text: #e0e0e0;
+  --text-dim: #888;
+  --accent: #4fc3f7;
+  --green: #66bb6a;
+  --red: #ef5350;
+  --orange: #ffa726;
+  --yellow: #ffee58;
+  font-size: 13px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---- Card ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.card h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* ---- Button ---- */
+button {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+  transition: background 0.15s;
+}
+button:hover { background: #3a3a3a; }
+button:active { background: #444; }
+button.primary { background: #1565c0; border-color: #1976d2; }
+button.primary:hover { background: #1976d2; }
+button.danger { background: #b71c1c; border-color: #c62828; }
+button.danger:hover { background: #c62828; }
+
+/* ---- Slider ---- */
+input[type='range'] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+input[type='range']::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ---- Layout ---- */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 8px;
+  padding: 8px;
+}
+
+.left-panel {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;
+}
+
+/* ---- StatusBar ---- */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 12px;
+  font-size: 12px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-dim);
+}
+
+.status-item span.val {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- ServoControl ---- */
+.servo-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 52px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.servo-row label {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.servo-row .us-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* ---- PDControl ---- */
+.pd-presets {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.pd-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pd-custom input[type='number'] {
+  width: 72px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+/* ---- CalibrationPanel ---- */
+.cal-ch-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cal-ch-row button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cal-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cal-log {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 11px;
+  min-height: 60px;
+  max-height: 100px;
+  overflow-y: auto;
+  color: var(--text-dim);
+  font-family: monospace;
+}
+
+/* ---- Graph ---- */
+.graph-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 8px;
+  height: 100%;
+}
+
+.graph-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.graph-card h4 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}

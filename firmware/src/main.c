@@ -80,6 +80,12 @@ int main(void) {
         if (now_ms != last_ms) {
             last_ms = now_ms;
 
+            // Trigger ADC reading for servo feedback at 10ms into the 20ms period
+            // Pulse is max 2.5ms at the start, so 10ms is safe.
+            if ((now_ms % 20) == 10) {
+                Update_Servo_Feedback();
+            }
+
             if (g_dlm_requested) {
                 if (g_dlm_timer == 0) g_dlm_timer = 2000;
                 if (g_dlm_timer <= 1800 && g_dlm_timer > 0) {
@@ -104,8 +110,15 @@ int main(void) {
         if (USART_GetFlagStatus(USART2, USART_FLAG_RXNE) != RESET) {
             Process_Byte(IF_UART2, USART_ReceiveData(USART2));
         }
+        if (USART_GetFlagStatus(USART2, USART_FLAG_ORE) != RESET) {
+            USART_ReceiveData(USART2); // Clear ORE by reading DR
+        }
+
         if (USART_GetFlagStatus(USART4, USART_FLAG_RXNE) != RESET) {
             Process_Byte(IF_UART4, USART_ReceiveData(USART4));
+        }
+        if (USART_GetFlagStatus(USART4, USART_FLAG_ORE) != RESET) {
+            USART_ReceiveData(USART4); // Clear ORE by reading DR
         }
     }
 }
