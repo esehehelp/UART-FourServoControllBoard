@@ -153,6 +153,11 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 }
             }
             break;
+        case 0x09: // Servo Free (PWM off) — ch_mask: bit0=CH0..bit3=CH3
+            if (len >= 1) {
+                Servo_Free(data[0]);
+            }
+            break;
         case 0xF0: // DLM (Start Countdown to ISP)
             g_dlm_requested = 1;
             break;
