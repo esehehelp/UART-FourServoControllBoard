@@ -37,11 +37,11 @@ typedef struct {
 } Parser_t;
 
 extern volatile uint8_t g_dlm_requested;
-extern volatile uint8_t g_led_duty;
 
 void Protocol_Init(uint8_t device_id);
 void Process_Byte(Interface_t iface, uint8_t b);
 void Process_Packet(uint8_t *buf, uint8_t len);
 void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd, uint8_t *data, uint8_t len);
+void Forward_Packet(Interface_t source_iface, uint8_t *pkt, uint8_t len);
 
 #endif

@@ -28,7 +28,7 @@ const uint8_t  MyDevDescr[] =
     DEF_IC_PRG_VER, 0x00, // bcdDevice 0.01
     0x01,       // iManufacturer (String Index)
     0x02,       // iProduct (String Index)
-    0x00,       // iSerialNumber (String Index)
+    0x03,       // iSerialNumber (String Index)
     0x01,       // bNumConfigurations 1
 };
 
@@ -81,10 +81,12 @@ const uint8_t  MyProdInfo[] =
                     'r', 0x00, 'i', 0x00, 'a', 0x00, 'l', 0x00
 };
 
-/* Serial Number Information */
-const uint8_t  MySerNumInfo[] =
+/* Serial Number Information — populated at runtime from chip UID */
+/* 2-byte header + 16 hex chars × 2 bytes (UTF-16LE) = 34 bytes */
+uint8_t  MySerNumInfo[34] =
 {
-    0x16, 0x03, '0', 0, '1', 0, '2', 0, '3', 0, '4', 0, '5', 0
-              , '6', 0, '7', 0, '8', 0, '9', 0
+    0x22, 0x03, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0,
+                '0', 0, '0', 0, '0', 0, '0', 0, '0', 0, '0', 0,
+                '0', 0, '0', 0, '0', 0, '0', 0
 };
 

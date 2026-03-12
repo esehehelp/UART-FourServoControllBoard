@@ -1,4 +1,6 @@
 #include "protocol.h"
+#include "app.h"
+#include "led.h"
 #include "servo.h"
 #include "adc.h"
 #include "UART.h"
@@ -10,12 +12,10 @@
 static Parser_t g_parsers[4];
 
 volatile uint8_t g_dlm_requested = 0;
-volatile uint8_t g_led_duty = 0;
 
 void Protocol_Init(uint8_t device_id) {
     Config_Load(); // Load settings from flash
     g_dlm_requested = 0;
-    g_led_duty = 0;
     memset(g_parsers, 0, sizeof(g_parsers));
 }
 
@@ -57,20 +57,30 @@ void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd,
 }
 
 void Forward_Packet(Interface_t source_iface, uint8_t *pkt, uint8_t len) {
-    if (source_iface != IF_USB) {
-        USBFS_Endp_DataUp(DEF_UEP3, pkt, len, DEF_UEP_CPY_LOAD);
-    }
-    if (source_iface != IF_UART2) {
-        for(int i=0; i<len; i++) {
-            while(USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
-            USART_SendData(USART2, pkt[i]);
-        }
-    }
-    if (source_iface != IF_UART4) {
-        for(int i=0; i<len; i++) {
-            while(USART_GetFlagStatus(USART4, USART_FLAG_TXE) == RESET);
-            USART_SendData(USART4, pkt[i]);
-        }
+    switch (source_iface) {
+        case IF_USB:
+            // USB → UART2 TX (downstream into ring)
+            for (int i = 0; i < len; i++) {
+                while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
+                USART_SendData(USART2, pkt[i]);
+            }
+            break;
+        case IF_UART2:
+            // Upstream received → forward downstream via UART4
+            for (int i = 0; i < len; i++) {
+                while (USART_GetFlagStatus(USART4, USART_FLAG_TXE) == RESET);
+                USART_SendData(USART4, pkt[i]);
+            }
+            break;
+        case IF_UART4:
+            // Downstream received → forward upstream via UART2 (toward host)
+            for (int i = 0; i < len; i++) {
+                while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET);
+                USART_SendData(USART2, pkt[i]);
+            }
+            break;
+        default:
+            break;
     }
 }
 
@@ -109,15 +119,18 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
             }
             break;
         case 0x04: // CfgWrite
-            if (len >= 2 && data[0] == 0x01) { // Change ID
+            if (len >= 2 && data[0] == 0x01) { // Change device_id
                 g_config.device_id = data[1];
                 Config_Save();
             }
-            break;
-        case 0x05: // STATIC_LED
-            if (len >= 1) {
-                g_led_duty = data[0];
+            if (len >= 2 && data[0] == 0x02) { // Change role
+                g_config.role = data[1];
+                Config_Save();
             }
+            break;
+        case 0x05: // LED control (2-LED)
+            if (len >= 1) LED1_SetDuty(data[0]);
+            if (len >= 2) LED2_SetDuty(data[1]);
             break;
         case 0x06: // Set Voltage (PD PPS)
             if (len >= 2) {
@@ -156,6 +169,21 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
         case 0x09: // Servo Free (PWM off) — ch_mask: bit0=CH0..bit3=CH3
             if (len >= 1) {
                 Servo_Free(data[0]);
+            }
+            break;
+        case 0xA0: // Ping (Device Discovery)
+            if (g_config.role == ROLE_HOST && source_iface == IF_USB) {
+                // Host received discovery request from USB → broadcast into ring
+                App_Trigger_Discovery();
+            } else if (g_config.role == ROLE_DEVICE) {
+                // Device received Ping → reply with own device_id
+                uint8_t id = g_config.device_id;
+                Send_Packet(source_iface, source, g_config.device_id, 0xA1, &id, 1);
+            }
+            break;
+        case 0xA1: // Pong (Discovery Response)
+            if (g_config.role == ROLE_HOST && len >= 1) {
+                App_On_Pong(data[0]);
             }
             break;
         case 0xF0: // DLM (Start Countdown to ISP)
