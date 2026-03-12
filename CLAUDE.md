@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 UART-FourServoControllBoard (UART-FSCB) is a complete embedded systems project: a compact 4-axis smart servo controller board (WCH CH32X035F7P6, RISC-V 48MHz) with USB-PD power support. It has three components:
 
-- `firmware/` — C firmware for the CH32X035, built with PlatformIO/ch32fun
+- `firmware/` — C firmware for the CH32X035, built with PlatformIO
 - `hardware/` — KiCad 9.0 PCB design
 - `software/` — Cross-platform Go + Fyne GUI for device control, monitoring, and calibration
 
@@ -38,7 +38,7 @@ UI -> Controller -> SerialManager -> UART -> Firmware
                  <- packet channel <-
 ```
 
-- `config/config.go` — All protocol constants, command codes (0x01–0x08, 0xF0), sensor types, Kalman filter parameters, calibration constants
+- `config/config.go` — All protocol constants, command codes (0x01–0x09, 0xF0), sensor types, Kalman filter parameters, calibration constants
 - `pkg/device/packet.go` — Packet struct: `[0xAA | Target | Source | Command | Length | Data... | CRC8]`, with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07)
 - `pkg/serial/manager.go` — Goroutine-based UART manager; auto-detects ports, parses packets, exposes a receive channel
 - `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED`, `SetPDVoltage`, `RequestSensorRead`); holds ring buffers and Kalman state; runs a background processor goroutine
@@ -73,7 +73,7 @@ Sensor response (`0x82`): 16-bit ADC values for voltage, temperature, current, a
 Built with PlatformIO targeting CH32X035F7P6. Key source files in `firmware/src/`:
 - `protocol.c/h` — Packet parsing and command dispatch
 - `servo.c/h` — TIM2 (CH0–2: PA0/PA1/PA3) and TIM1 (CH3: PC1) PWM output
-- `adc.c/h` — Voltage (PA6), current (PA7, OPA2 PGA x32, 20mΩ shunt), NTC temp (PB1), servo feedback ADC
+- `adc.c/h` — Voltage (PA6), current (PA7, OPA2 PGA x32, 10mΩ shunt), NTC temp (PB1), servo feedback ADC
 - `UART.c/h` — Dual 1-Wire UART on USART2 (PA2) and USART4 (PA5) at 115200 bps
 - `usb_pd.c/h` — USB-PD voltage negotiation
 - `config.c/h` — Flash-backed configuration storage
