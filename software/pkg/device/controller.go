@@ -121,6 +121,13 @@ func (c *Controller) RequestCalibrationSave(data []uint8) error {
 	return c.sm.Send(pkt)
 }
 
+// ServoFree disables PWM output for channels specified by chMask (bit0=CH0..bit3=CH3).
+// The servo becomes limp. Call SetServo to re-engage.
+func (c *Controller) ServoFree(chMask uint8) error {
+	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_SERVO_FREE, []uint8{chMask})
+	return c.sm.Send(pkt)
+}
+
 // processorLoop handles incoming packets and periodic sensor reads
 func (c *Controller) processorLoop() {
 	ticker := time.NewTicker(time.Duration(config.UPDATE_INTERVAL_MS) * time.Millisecond)
