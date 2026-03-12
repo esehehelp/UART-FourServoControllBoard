@@ -7,8 +7,8 @@ All peripheral mappings extracted from firmware source files.
 
 Pin,Port,MCU Function,Hardware Use,Peripheral,ADC Channel,Source File,Notes
 1,PB12,GPIO,LED1,GPIO_Out_PP,none,led.c:9,Active-High LED output
-2,PC14,GPIO,CC1,GPIO,none,protocol.h,"USB-PD CC1 (optional, not implemented)"
-3,PC15,GPIO,CC2,GPIO,none,protocol.h,"USB-PD CC2 (optional, not implemented)"
+2,PC14,USB-PD CC1,CC1,USB-PD,none,usb_pd.c,"USB-PD CC1 — implemented; voltage negotiation and PPS support (usb_pd.c)"
+3,PC15,USB-PD CC2,CC2,USB-PD,none,usb_pd.c,"USB-PD CC2 — implemented; voltage negotiation and PPS support (usb_pd.c)"
 4,PC3,GPIO,LED2,GPIO_Out_PP,none,led.c:16,"Active-Low; CMP1_N0 must be disabled (led.c:39)"
 5,PC1,TIM1_CH2,Servo CH3 PWM + FB,TIM1 (Full Remap),ADC_CH11,servo.c:45,Full Remap AFIO PCFR1[17:15]=011
 6,PA0,TIM2_CH1,Servo CH0 PWM + FB,TIM2_CH1,ADC_CH0,adc.h:12,Servo 0 output and feedback ADC
