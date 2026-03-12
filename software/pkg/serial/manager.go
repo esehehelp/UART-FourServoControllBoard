@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
+	"strings"
 	"time"
 
-	"github.com/jacobsa/go-serial/serial"
+	goserial "go.bug.st/serial"
 	"uart-servo-controller/config"
 )
 
@@ -272,67 +274,121 @@ func (m *Manager) processBuffer(buffer *[]uint8) {
 	}
 }
 
-// tryConnect attempts to find and connect to device
+// tryConnect probes each available port with CMD_SENSOR_READ and accepts
+// the first one that responds with a valid RESP_SENSOR_DATA packet.
 func (m *Manager) tryConnect() {
-	// List all available ports
-	ports, err := getPorts()
+	ports, err := goserial.GetPortsList()
 	if err != nil {
 		log.Printf("Error listing ports: %v", err)
 		m.updateStatus("Scanning...", "orange")
 		return
 	}
 
+	if len(ports) == 0 {
+		m.updateStatus("Scanning...", "orange")
+		return
+	}
+
+	// Prefer USB/ACM ports; skip ttyS* (kernel-emulated HW UARTs) unless nothing else exists
+	sort.SliceStable(ports, func(i, j int) bool {
+		return portPriority(ports[i]) > portPriority(ports[j])
+	})
+
+	mode := &goserial.Mode{
+		BaudRate: config.DEFAULT_BAUD,
+		DataBits: 8,
+		Parity:   goserial.NoParity,
+		StopBits: goserial.OneStopBit,
+	}
+
 	m.updateStatus("Scanning...", "orange")
 
 	for _, portName := range ports {
-		opts := serial.OpenOptions{
-			PortName:        portName,
-			BaudRate:        config.DEFAULT_BAUD,
-			DataBits:        8,
-			StopBits:        1,
-			MinimumReadSize: 1,
+		if portName, port := m.probePort(portName, mode); port != nil {
+			m.port = port
+			log.Printf("Connected to %s", portName)
+			m.updateStatus(fmt.Sprintf("Connected: %s", portName), "green")
+			return
 		}
+	}
+}
 
-		port, err := serial.Open(opts)
-		if err != nil {
+// portPriority returns a sort key: higher = try first.
+// ttyUSB/ttyACM (USB-serial) are preferred over ttyS (on-board UART).
+func portPriority(name string) int {
+	switch {
+	case strings.Contains(name, "ttyUSB"):
+		return 3
+	case strings.Contains(name, "ttyACM"):
+		return 2
+	case strings.Contains(name, "ttyS"):
+		return 0 // last resort
+	default:
+		return 1
+	}
+}
+
+// probePort opens portName, sends CMD_SENSOR_READ, and waits up to 300 ms
+// for a RESP_SENSOR_DATA reply. Returns the open port on success, nil on failure.
+func (m *Manager) probePort(portName string, mode *goserial.Mode) (string, goserial.Port) {
+	port, err := goserial.Open(portName, mode)
+	if err != nil {
+		return portName, nil
+	}
+
+	// Send probe packet
+	probe := NewPacket(config.DEVICE_ID, config.CMD_SENSOR_READ, []uint8{config.SENSOR_TYPE_ALL})
+	if _, err := port.Write(probe.Marshal()); err != nil {
+		port.Close()
+		return portName, nil
+	}
+
+	// Read with 50 ms per-call timeout; total budget 300 ms
+	if err := port.SetReadTimeout(50 * time.Millisecond); err != nil {
+		port.Close()
+		return portName, nil
+	}
+
+	buf := make([]uint8, 64)
+	rxBuf := make([]uint8, 0, 64)
+	deadline := time.Now().Add(300 * time.Millisecond)
+
+	for time.Now().Before(deadline) {
+		n, _ := port.Read(buf)
+		if n > 0 {
+			rxBuf = append(rxBuf, buf[:n]...)
+			if pkt := findPacket(rxBuf); pkt != nil && pkt.Cmd == config.RESP_SENSOR_DATA {
+				// Disable per-call read timeout for normal operation
+				_ = port.SetReadTimeout(0)
+				return portName, port
+			}
+		}
+	}
+
+	port.Close()
+	return portName, nil
+}
+
+// findPacket scans buf for a complete, CRC-valid packet and returns it.
+func findPacket(buf []uint8) *Packet {
+	for i := 0; i < len(buf); i++ {
+		if buf[i] != config.PKT_HEADER {
 			continue
 		}
-
-		m.port = port
-		log.Printf("Connected to %s", portName)
-		m.updateStatus(fmt.Sprintf("Connected: %s", portName), "green")
-		return
-	}
-}
-
-// getPorts returns available serial ports
-// Simple implementation that tries common port patterns
-func getPorts() ([]string, error) {
-	// Try common Linux/Unix port patterns
-	possiblePorts := []string{
-		"/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2",
-		"/dev/ttyACM0", "/dev/ttyACM1", "/dev/ttyACM2",
-		"/dev/ttyS0", "/dev/ttyS1", "/dev/ttyS2",
-		"/dev/cu.usbserial-*",
-		"COM1", "COM2", "COM3", "COM4", "COM5",
-	}
-
-	var availablePorts []string
-	for _, port := range possiblePorts {
-		if len(port) > 0 && !contains(availablePorts, port) {
-			availablePorts = append(availablePorts, port)
+		if len(buf)-i < 6 {
+			break
+		}
+		dataLen := int(buf[i+4])
+		end := i + 6 + dataLen
+		if len(buf) < end {
+			break
+		}
+		pkt, err := Unmarshal(buf[i:end])
+		if err == nil {
+			return pkt
 		}
 	}
-	return availablePorts, nil
-}
-
-func contains(slice []string, item string) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
-	}
-	return false
+	return nil
 }
 
 // updateStatus calls the status callback
