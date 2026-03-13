@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  go-test:
+    name: Go vet + unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: software
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: software/go.mod
+          cache-dependency-path: software/go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -v -count=1 ./...
+
+  firmware-build:
+    name: Firmware compile check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Compile firmware
+        run: pio run --environment genericCH32X035F7P6
+
+  ts-typecheck:
+    name: TypeScript type check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: software/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: software/frontend/package-lock.json
+      - name: Stub Wails runtime (generated, not committed)
+        run: |
+          mkdir -p wailsjs/runtime
+          printf '{"name":"@wailsapp/runtime","version":"0.0.0","main":"runtime.js"}' \
+            > wailsjs/runtime/package.json
+          touch wailsjs/runtime/runtime.js
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit
