@@ -96,9 +96,9 @@ func (c *Controller) SetServo(ch uint8, microseconds uint16) error {
 	return c.sm.Send(pkt)
 }
 
-// SetLED sends LED control command
-func (c *Controller) SetLED(duty uint8) error {
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_LED_SET, []uint8{duty})
+// SetLED sends LED control command (ch: 0=LED1, 1=LED2; duty: 0-255)
+func (c *Controller) SetLED(ch, duty uint8) error {
+	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_LED_SET, []uint8{ch, duty})
 	return c.sm.Send(pkt)
 }
 

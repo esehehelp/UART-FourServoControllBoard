@@ -7,7 +7,7 @@ declare global {
       main: {
         App: {
           SetServo(ch: number, us: number): Promise<void>
-          SetLED(duty: number): Promise<void>
+          SetLED(ch: number, duty: number): Promise<void>
           SetPDVoltage(millivolts: number): Promise<void>
           StartCalibration(ch: number): Promise<void>
           StopCalibration(): Promise<void>
@@ -28,7 +28,7 @@ const g = () => window.go?.main?.App
 const rt = () => window.runtime
 
 export const SetServo = (ch: number, us: number) => g()?.SetServo(ch, us)
-export const SetLED = (duty: number) => g()?.SetLED(duty)
+export const SetLED = (ch: number, duty: number) => g()?.SetLED(ch, duty)
 export const SetPDVoltage = (mv: number) => g()?.SetPDVoltage(mv)
 export const StartCalibration = (ch: number) => g()?.StartCalibration(ch)
 export const StopCalibration = () => g()?.StopCalibration()

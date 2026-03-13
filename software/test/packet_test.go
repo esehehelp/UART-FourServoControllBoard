@@ -31,7 +31,7 @@ t.Errorf("CRC8() = 0x%02x, want 0x%02x", got, tt.want)
 
 // TestPacketMarshal tests packet serialization
 func TestPacketMarshal(t *testing.T) {
-pkt := serial.NewPacket(0x01, 0x05, []uint8{0x80})
+pkt := serial.NewPacket(0x01, 0x30, []uint8{0x00, 0x80})
 bytes := pkt.Marshal()
 
 if len(bytes) < 6 {
@@ -46,15 +46,15 @@ if bytes[1] != 0x01 {
 t.Errorf("Target = 0x%02x, want 0x01", bytes[1])
 }
 
-if bytes[3] != 0x05 {
-t.Errorf("Cmd = 0x%02x, want 0x05", bytes[3])
+if bytes[3] != 0x30 {
+t.Errorf("Cmd = 0x%02x, want 0x30", bytes[3])
 }
 }
 
 // TestPacketUnmarshal tests packet deserialization
 func TestPacketUnmarshal(t *testing.T) {
-// Create a valid packet
-original := serial.NewPacket(0x01, 0x05, []uint8{0x80})
+// Create a valid packet (LED1 ch=0, duty=0x80)
+original := serial.NewPacket(0x01, 0x30, []uint8{0x00, 0x80})
 bytes := original.Marshal()
 
 // Unmarshal it
@@ -67,18 +67,18 @@ if pkt.Target != 0x01 {
 t.Errorf("Target = 0x%02x, want 0x01", pkt.Target)
 }
 
-if pkt.Cmd != 0x05 {
-t.Errorf("Cmd = 0x%02x, want 0x05", pkt.Cmd)
+if pkt.Cmd != 0x30 {
+t.Errorf("Cmd = 0x%02x, want 0x30", pkt.Cmd)
 }
 
-if len(pkt.Data) != 1 || pkt.Data[0] != 0x80 {
-t.Errorf("Data = %v, want [0x80]", pkt.Data)
+if len(pkt.Data) != 2 || pkt.Data[0] != 0x00 || pkt.Data[1] != 0x80 {
+t.Errorf("Data = %v, want [0x00, 0x80]", pkt.Data)
 }
 }
 
 // TestCRCMismatch tests CRC validation
 func TestCRCMismatch(t *testing.T) {
-original := serial.NewPacket(0x01, 0x05, []uint8{0x80})
+original := serial.NewPacket(0x01, 0x30, []uint8{0x00, 0x80})
 bytes := original.Marshal()
 
 // Corrupt the data
@@ -103,9 +103,14 @@ cmd:  0x01,
 data: []uint8{0, 0x05, 0xDC}, // CH0, 1500us
 },
 {
-name: "led_control",
-cmd:  0x05,
-data: []uint8{128},
+name: "led1_set",
+cmd:  0x30,
+data: []uint8{0, 128}, // LED1 ch=0
+},
+{
+name: "led2_set",
+cmd:  0x30,
+data: []uint8{1, 200}, // LED2 ch=1
 },
 {
 name: "pd_voltage",

@@ -128,9 +128,11 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
                 Config_Save();
             }
             break;
-        case 0x05: // LED control (2-LED)
-            if (len >= 1) LED1_SetDuty(data[0]);
-            if (len >= 2) LED2_SetDuty(data[1]);
+        case 0x30: // LED Set (ch, duty) — replaces 0x05
+            if (len >= 2) {
+                if      (data[0] == 0) LED1_SetDuty(data[1]);
+                else if (data[0] == 1) LED2_SetDuty(data[1]);
+            }
             break;
         case 0x06: // Set Voltage (PD PPS)
             if (len >= 2) {

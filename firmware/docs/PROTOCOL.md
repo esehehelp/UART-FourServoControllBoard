@@ -49,11 +49,13 @@
   - `[0:1] = [0x01, NewID]`: デバイスIDを変更し、Flashに保存します。
   - `[0:1] = [0x02, Role]`: デバイスのロールを変更し、Flashに保存します。
 
-### 0x05: STATIC_LED (LED制御)
-基板上のインジケータLEDの輝度を設定します。
-- **Data**: 1–2 bytes
-  - `[0]`: LED1 Duty (0-255, PWM)
-  - `[1]`: LED2 Duty (0-255, PWM) — 省略時は LED2 を変更しない
+### ~~0x05: STATIC_LED~~ (廃止 → `0x30` に移行)
+
+### 0x30: LED_SET (LED制御)
+基板上のインジケータLEDを個別に制御します。
+- **Data**: 2 bytes
+  - `[0]`: Channel (0=LED1/PB12/Active-High, 1=LED2/PC3/Active-Low)
+  - `[1]`: Duty (0-255, soft PWM)
 
 ### 0x06: Set Voltage (USB PD PPS設定)
 USB PD PPS対応電源を使用している場合、供給電圧を変更します。
