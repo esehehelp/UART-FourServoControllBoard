@@ -15,21 +15,16 @@ UART-FourServoControllBoard (UART-FSCB) is a complete embedded systems project: 
 ```bash
 cd software
 
-make build-linux     # Build Linux binary -> bin/linux/servo-controller
-make build-win       # Build Windows binary (requires mingw-w64) -> bin/windows/servo-controller.exe
-make test            # Run unit tests
-make clean           # Remove build artifacts
-
-./build.sh all       # Build both Linux and Windows with colored output
-./build.sh linux     # Linux only
-./build.sh test      # Run tests with output
+~/go/bin/wails build             # Build -> build/bin/servo-controller
+~/go/bin/wails dev               # Dev server with hot reload
+go test -v ./test/...            # Run unit tests
 ```
 
-CGO is required (serial port access). Windows cross-compilation requires `mingw-w64`.
+CGO is required (serial port access). Wails v2 CLI (`~/go/bin/wails`) is required for building.
 
 ## Software Architecture
 
-The GUI app is written in Go 1.26+ using Fyne v2. All packages live under `software/`.
+The GUI app is written in Go 1.22+ using Wails v2 (WebView2) + React/TypeScript frontend. All packages live under `software/`.
 
 ### Communication Flow
 
