@@ -39,7 +39,7 @@ UI -> Controller -> SerialManager -> UART -> Firmware
 ```
 
 - `config/config.go` — All protocol constants, command codes (0x01–0x09, 0xF0), sensor types, Kalman filter parameters, calibration constants
-- `pkg/device/packet.go` — Packet struct: `[0xAA | Target | Source | Command | Length | Data... | CRC8]`, with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07)
+- `pkg/serial/manager.go` (packet part) — Packet struct: `[0xAA | Target | Source | Command | Length | Data... | CRC8]`, with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07). `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
 - `pkg/serial/manager.go` — Goroutine-based UART manager; auto-detects ports, parses packets, exposes a receive channel
 - `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED`, `SetPDVoltage`, `RequestSensorRead`); holds ring buffers and Kalman state; runs a background processor goroutine
 - `pkg/data/ringbuffer.go` — Thread-safe ring buffer (RWMutex, capacity 100) + 1D Kalman filter implementation
