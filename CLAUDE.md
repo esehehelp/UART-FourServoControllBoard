@@ -34,7 +34,7 @@ React UI -(Wails binding)-> App -> Controller -> serial.Manager -> USB-CDC -> Fi
 React UI <-(Wails events)-- App <- Controller <- rx channel     <-
 ```
 
-- `config/config.go` — Protocol constants, command codes (0x01–0x09, 0xF0), max packet size, sensor scale factors (see firmware/docs/constants.txt), Kalman filter and calibration parameters
+- `config/config.go` — Protocol constants, command codes (0x01–0x09, 0xF0), max packet size, sensor scale factors (see firmware/docs/constants.md), Kalman filter and calibration parameters
 - `pkg/serial/manager.go` — Packet struct `[0xAA | Target | Source | Command | Length | Data... | CRC8]` with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07); port auto-detection (WCH VID first) and probing; receive goroutine feeding a buffered channel. `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
 - `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED(ch, duty)`, `SetPDVoltage`, `ServoFree`, `RequestSensorRead`); parses 0x82 sensor data, holds ring buffers and Kalman state, marks data invalid after `SENSOR_TIMEOUT_MS`
 - `pkg/data/ringbuffer.go` — Thread-safe ring buffer (RWMutex, capacity 100) + 1D Kalman filter implementation
