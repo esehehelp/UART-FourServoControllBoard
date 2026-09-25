@@ -42,6 +42,9 @@ const (
 	MAX_PLOT_POINTS     = 100
 	UPDATE_INTERVAL_MS  = 33  // ~30fps
 	GRAPH_WINDOW_SECS   = 5
+	// SENSOR_TIMEOUT_MS: sensor data is marked invalid when no response
+	// arrives for this long (device disconnected / not answering)
+	SENSOR_TIMEOUT_MS   = 2000
 )
 
 // Servo constants

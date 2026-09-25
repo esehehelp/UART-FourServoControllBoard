@@ -6,6 +6,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	goserial "go.bug.st/serial"
@@ -115,12 +116,17 @@ type Manager struct {
 	running  bool
 	lastErr  error
 	onStatus func(string, string) // (message, color)
+	dropped  atomic.Uint64        // packets dropped because rxChan was full
 }
+
+// rxChanSize is the receive queue depth. Sensor responses arrive every
+// UPDATE_INTERVAL_MS, so this covers several seconds of a stalled consumer.
+const rxChanSize = 128
 
 // NewManager creates a new serial manager
 func NewManager(onStatus func(string, string)) *Manager {
 	return &Manager{
-		rxChan:   make(chan *Packet, 16),
+		rxChan:   make(chan *Packet, rxChanSize),
 		errChan:  make(chan error, 4),
 		done:     make(chan struct{}),
 		onStatus: onStatus,
@@ -143,6 +149,12 @@ func (m *Manager) Stop() {
 // RxChan returns the receive channel
 func (m *Manager) RxChan() <-chan *Packet {
 	return m.rxChan
+}
+
+// DroppedPackets returns how many received packets were discarded because
+// the receive channel was full.
+func (m *Manager) DroppedPackets() uint64 {
+	return m.dropped.Load()
 }
 
 // ErrChan returns the error channel
@@ -266,7 +278,8 @@ func (m *Manager) processBuffer(buffer *[]uint8) {
 		case <-m.done:
 			return
 		default:
-			log.Printf("RxChan full, dropping packet")
+			n := m.dropped.Add(1)
+			log.Printf("RxChan full, dropping packet %s (total dropped: %d)", pkt, n)
 		}
 
 		// Remove processed packet from buffer

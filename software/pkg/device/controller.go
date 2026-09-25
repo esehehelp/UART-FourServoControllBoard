@@ -19,6 +19,9 @@ type SensorData struct {
 	FBVolt   [4]float64 // FB voltage per channel (V)
 	RawTemp  uint16    // raw temperature value
 	Timestamp time.Time
+	// Valid is false until the first response arrives and again after no
+	// sensor response has been received for SENSOR_TIMEOUT_MS.
+	Valid bool
 }
 
 // Controller manages device communication and data
@@ -134,6 +137,7 @@ func (c *Controller) processorLoop() {
 	defer ticker.Stop()
 
 	startTime := time.Now()
+	rxChan := c.sm.RxChan()
 
 	for {
 		select {
@@ -141,10 +145,17 @@ func (c *Controller) processorLoop() {
 			return
 
 		case <-ticker.C:
+			c.checkTimeout()
 			// Periodically request sensor data
 			c.RequestSensorRead()
 
-		case pkt := <-c.sm.RxChan():
+		case pkt, ok := <-rxChan:
+			if !ok {
+				// Serial manager stopped and closed the channel. A nil channel
+				// blocks forever, so this case stops firing instead of spinning.
+				rxChan = nil
+				continue
+			}
 			if pkt != nil {
 				c.processPacket(pkt, startTime)
 			}
@@ -154,6 +165,16 @@ func (c *Controller) processorLoop() {
 				fmt.Printf("Serial error: %v\n", err)
 			}
 		}
+	}
+}
+
+// checkTimeout marks the sensor data invalid when no response has arrived
+// for SENSOR_TIMEOUT_MS, so stale values are not shown as live data.
+func (c *Controller) checkTimeout() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.data.Valid && time.Since(c.data.Timestamp) > time.Duration(config.SENSOR_TIMEOUT_MS)*time.Millisecond {
+		c.data.Valid = false
 	}
 }
 
@@ -191,12 +212,23 @@ func (c *Controller) processSensorData(pkt *serial.Packet, startTime time.Time) 
 		fbVolts[j] = float64(rawFB) * config.FB_VOLTAGE_SCALE
 	}
 
+	// After a timeout (disconnect / reconnect) start the filters from scratch
+	// instead of blending with values from the previous session.
+	c.mu.RLock()
+	wasValid := c.data.Valid
+	c.mu.RUnlock()
+	if !wasValid {
+		c.kfV.Reset()
+		c.kfI.Reset()
+	}
+
 	// Apply Kalman filtering
 	filteredV := c.kfV.Update(volt)
 	filteredI := c.kfI.Update(curr)
 
 	// Update data storage
 	c.mu.Lock()
+	c.data.Valid = true
 	c.data.Voltage = filteredV
 	c.data.Current = filteredI
 	c.data.Temp = temp

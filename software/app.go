@@ -18,6 +18,7 @@ type SensorDataEvent struct {
 	Temp      float64    `json:"temp"`
 	FBVolt    [4]float64 `json:"fbVolt"`
 	Timestamp string     `json:"timestamp"`
+	Valid     bool       `json:"valid"` // false when no response for SENSOR_TIMEOUT_MS
 }
 
 // PlotDataEvent is emitted on the "plot-data" event (~30fps)
@@ -99,6 +100,7 @@ func (a *App) sensorLoop(ctx context.Context) {
 				Temp:      d.Temp,
 				FBVolt:    d.FBVolt,
 				Timestamp: d.Timestamp.Format("15:04:05"),
+				Valid:     d.Valid,
 			})
 
 			_, volts, currs, temps, fbv := a.ctrl.GetPlotData()
