@@ -42,7 +42,7 @@
 | 項目 | 内容 |
 | :--- | :--- |
 | **MCU** | WCH CH32X035F7P6 (TSSOP-20) |
-| **入力電圧** | USB VBUS (5V-20V) または EXT_IN (5V〜20V) |
+| **入力電圧** | USB VBUS (5V-20V) または EXT_IN (5V〜20V)。V0.8 は 3.3V LDO の入力耐圧のため USB-PD 要求をファームで 16.8V、GUI で 12V までに制限 (#38) |
 | **ロジック電圧** | 3.3V (XC6206 LDO内蔵) |
 | **出力チャンネル** | 4PWM |
 | **通信** | 1-Wire UARTx2 (Default: 115200bps, 8N1) |

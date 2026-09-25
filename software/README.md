@@ -12,7 +12,8 @@ UART-FSCB を USB 経由で操作・監視する PC 用 GUI。バックエンド
   - 2 秒間応答がないとデータを無効扱いにし、ステータスバーに "No sensor data" を表示
 - **サーボ制御** (`0x01`): 4ch スライダー、500–2500 µs (ファームウェアのデフォルト範囲)
 - **LED 制御** (`0x30`): LED1 / LED2 それぞれ 0–255
-- **USB-PD 電圧** (`0x06`): 5 / 9 / 15 / 20 V プリセット + 任意電圧 (mV)
+- **USB-PD 電圧** (`0x06`): 5 / 9 / 12 V プリセット + 任意電圧 (5000–12000 mV、#38)。デバイスの ACK / エラーを表示
+- **エラー表示**: ファームウェアのエラー応答 (`0xEE`) をステータスバーに 5 秒間表示
 - **位置キャリブレーション** (`0x07`)
   1. サーボをセンター (1500 µs) へ移動
   2. PWM を停止 (`0x09`) し、ユーザがアームを最小位置へ動かして Confirm
@@ -40,6 +41,7 @@ cd software
 ~/go/bin/wails build -platform windows/amd64  # Windows 向け
 ~/go/bin/wails dev                            # ホットリロード付き開発サーバ
 go test ./pkg/... ./test/...                  # Go ユニットテスト
+go run ./cmd/selftest -port <PORT>            # 接続したボードの非破壊セルフテスト
 ```
 
 ## プロジェクト構成
@@ -54,10 +56,14 @@ software/
 │   ├── device/controller.go   # 高レベル API (SetServo, SetLED, ...)、センサーデータ解析
 │   ├── device/packet.go       # pkg/serial のパケット型のエイリアス
 │   ├── data/ringbuffer.go     # スレッドセーフなリングバッファ + 1D Kalman フィルタ
-│   └── calibration/           # 位置キャリブレーションの状態機械
+│   ├── calibration/           # 位置キャリブレーションの状態機械
+│   └── selftest/              # ボードの非破壊セルフテスト (cmd/selftest から使用)
+├── cmd/selftest/              # セルフテスト CLI
 ├── frontend/src/              # React UI (StatusBar, ServoControl, LEDControl, PDControl,
 │                              #           CalibrationPanel, SensorGraph)
 └── test/                      # パケットのユニットテスト
+
+ファームウェア書き込み用の `uploader/` (リポジトリ直下) は `pkg/serial` を再利用します。
 ```
 
 ## 通信フロー

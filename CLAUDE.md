@@ -17,8 +17,14 @@ cd software
 
 ~/go/bin/wails build             # Build -> build/bin/servo-controller
 ~/go/bin/wails dev               # Dev server with hot reload
-go test -v ./test/...            # Run unit tests
+go test -v ./pkg/... ./test/...  # Run unit tests
+go run ./cmd/selftest -port PORT # Non-destructive checks against a connected board
 ```
+
+Other test/tool locations:
+- `make -C firmware/test/host test` — firmware logic (parser, TTL, errors, config CRC) built for x86 with stubbed hardware
+- `python -m pytest firmware/test/test_protocol_utils.py` — the single Python protocol implementation used by the scripts in `firmware/test/`
+- `uploader/` — Go USB uploader used by `pio run -t upload` (0xF0 → BootROM → wchisp); reuses `software/pkg/serial` via a `replace` directive
 
 CGO is required (serial port access). Wails v2 CLI (`~/go/bin/wails`) is required for building.
 `go vet .` / `go test ./...` on the main package need `frontend/dist` (run `npm run build` in `frontend/` first).
@@ -40,7 +46,7 @@ React UI <-(Wails events)-- App <- Controller <- rx channel     <-
 - `pkg/data/ringbuffer.go` — Thread-safe ring buffer (RWMutex, capacity 100) + 1D Kalman filter implementation
 - `pkg/calibration/state_machine.go` — Manual position calibration: center → PWM off, user confirms min → user confirms max → compute slope/intercept → CMD 0x07 (floats little-endian)
 - `app.go` — Methods bound to JS and the ~30 FPS `sensor-data` / `plot-data` event loop; `status` / `cal-status` events
-- `frontend/src/` — React components: StatusBar, ServoControl (500–2500µs), LEDControl (LED1/LED2), PDControl (5/9/15/20V presets + custom), CalibrationPanel, SensorGraph. `wails.ts` declares the bound Go methods — keep it in sync with `app.go`
+- `frontend/src/` — React components: StatusBar, ServoControl (500–2500µs), LEDControl (LED1/LED2), PDControl (5/9/12V presets + custom, 5000–12000 mV, #38), CalibrationPanel, SensorGraph. `wails.ts` declares the bound Go methods — keep it in sync with `app.go`
 
 ### Concurrency Model
 
