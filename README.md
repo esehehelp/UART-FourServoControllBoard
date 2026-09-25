@@ -69,6 +69,7 @@
 | :--- | :--- |
 | `firmware/` | CH32X035 用ファームウェア (PlatformIO)。通信仕様は [`firmware/docs/PROTOCOL.md`](firmware/docs/PROTOCOL.md) |
 | `software/` | PC 用 GUI (Go + Wails)。詳細は [`software/README.md`](software/README.md) |
+| `uploader/` | USB 経由のファームウェア書き込みツール (Go、`pio run -t upload` から使用) |
 | `hardware/` | KiCad 9.0 設計データ |
 
 ## 開発環境 (Development)
@@ -82,10 +83,14 @@
 ```bash
 cd firmware
 pio run                 # ビルド
-pio run -t upload       # WCH-LinkE 等で書き込み
 
-# USB 経由 (0xF0 で DLM に移行してから wchisp で書き込み)
-python test/dlm_upload.py <PORT> .pio/build/genericCH32X035F7P6/firmware.bin
+# USB 経由の書き込み (WCH-LinkE 不要)
+#   0xF0 で DLM に移行 -> BootROM を待つ -> wchisp flash (uploader/ を初回に go build)
+pio run -t upload
+pio run -t upload --upload-port /dev/ttyACM0   # ポートを指定する場合
+
+# uploader を単体で使う場合
+cd ../uploader && make && bin/uploader ../firmware/.pio/build/genericCH32X035F7P6/firmware.bin
 ```
 
 ### GUI のビルド

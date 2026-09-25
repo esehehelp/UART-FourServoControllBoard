@@ -1,3 +1,4 @@
+"""Deprecated: use uploader/ (Go) or `pio run -t upload` instead (#54)."""
 import serial
 import sys
 import time
