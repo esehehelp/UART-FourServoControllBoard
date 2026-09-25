@@ -121,9 +121,9 @@ func (a *App) SetServo(ch uint8, us uint16) error {
 	return a.ctrl.SetServo(ch, us)
 }
 
-// SetLED sets LED PWM duty cycle (0-255)
-func (a *App) SetLED(duty uint8) error {
-	return a.ctrl.SetLED(duty)
+// SetLED sets the PWM duty cycle (0-255) of LED1 and LED2
+func (a *App) SetLED(duty1, duty2 uint8) error {
+	return a.ctrl.SetLED(duty1, duty2)
 }
 
 // SetPDVoltage sets USB-PD negotiated voltage in millivolts

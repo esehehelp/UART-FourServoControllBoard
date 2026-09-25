@@ -20,7 +20,7 @@ const (
 	CMD_SENSOR_READ      = 0x02 // Read sensors [type]
 	CMD_SYNC_WRITE       = 0x03 // Sync write all servos
 	CMD_CONFIG_WRITE     = 0x04 // Config write
-	CMD_LED_SET          = 0x05 // Set LED duty [duty: 0-255]
+	CMD_LED_SET          = 0x05 // Set LED duty [led1_duty, led2_duty] (0-255 each)
 	CMD_PD_VOLTAGE       = 0x06 // Set PD voltage [mv_h, mv_l]
 	CMD_CAL_SAVE         = 0x07 // Save calibration [ch, slope(4B), intercept(4B), min_h, min_l, max_h, max_l]
 	CMD_CAL_GET          = 0x08 // Get calibration [ch]
