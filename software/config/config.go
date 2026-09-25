@@ -9,6 +9,10 @@ const (
 	TIMEOUT_MS    = 100
 )
 
+// USB_VID_WCH is the USB vendor ID of the board (CH32X035, firmware
+// lib/Drivers/inc/usb_desc.h DEF_USB_VID). Used to try the board's port first.
+const USB_VID_WCH = "1A86"
+
 // Device IDs
 const (
 	DEVICE_ID = 0x01

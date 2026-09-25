@@ -10,6 +10,7 @@ import (
 	"time"
 
 	goserial "go.bug.st/serial"
+	"go.bug.st/serial/enumerator"
 	"uart-servo-controller/config"
 )
 
@@ -290,7 +291,7 @@ func (m *Manager) processBuffer(buffer *[]uint8) {
 // tryConnect probes each available port with CMD_SENSOR_READ and accepts
 // the first one that responds with a valid RESP_SENSOR_DATA packet.
 func (m *Manager) tryConnect() {
-	ports, err := goserial.GetPortsList()
+	ports, err := listPorts()
 	if err != nil {
 		log.Printf("Error listing ports: %v", err)
 		m.updateStatus("Scanning...", "orange")
@@ -302,7 +303,8 @@ func (m *Manager) tryConnect() {
 		return
 	}
 
-	// Prefer USB/ACM ports; skip ttyS* (kernel-emulated HW UARTs) unless nothing else exists
+	// Try the board (WCH VID) first, then other USB ports; ttyS* (kernel-emulated
+	// HW UARTs) only as a last resort
 	sort.SliceStable(ports, func(i, j int) bool {
 		return portPriority(ports[i]) > portPriority(ports[j])
 	})
@@ -316,8 +318,8 @@ func (m *Manager) tryConnect() {
 
 	m.updateStatus("Scanning...", "orange")
 
-	for _, portName := range ports {
-		if portName, port := m.probePort(portName, mode); port != nil {
+	for _, p := range ports {
+		if portName, port := m.probePort(p.Name, mode); port != nil {
 			m.port = port
 			log.Printf("Connected to %s", portName)
 			m.updateStatus(fmt.Sprintf("Connected: %s", portName), "green")
@@ -326,15 +328,42 @@ func (m *Manager) tryConnect() {
 	}
 }
 
+// listPorts returns the available ports with USB details when the OS
+// provides them, falling back to plain port names otherwise.
+func listPorts() ([]*enumerator.PortDetails, error) {
+	details, err := enumerator.GetDetailedPortsList()
+	if err == nil {
+		return details, nil
+	}
+	log.Printf("Detailed port enumeration failed, using port names only: %v", err)
+
+	names, err := goserial.GetPortsList()
+	if err != nil {
+		return nil, err
+	}
+	ports := make([]*enumerator.PortDetails, len(names))
+	for i, name := range names {
+		ports[i] = &enumerator.PortDetails{Name: name}
+	}
+	return ports, nil
+}
+
 // portPriority returns a sort key: higher = try first.
-// ttyUSB/ttyACM (USB-serial) are preferred over ttyS (on-board UART).
-func portPriority(name string) int {
+// A USB port with the board's VID (WCH) is tried first, then any other USB
+// port, then ports ranked by name: ttyUSB/ttyACM/COM (USB-serial or Windows
+// COM ports) are preferred over ttyS (on-board UART).
+func portPriority(p *enumerator.PortDetails) int {
 	switch {
-	case strings.Contains(name, "ttyUSB"):
+	case p.IsUSB && strings.EqualFold(p.VID, config.USB_VID_WCH):
+		return 5
+	case p.IsUSB:
+		return 4
+	case strings.Contains(p.Name, "ttyUSB"):
 		return 3
-	case strings.Contains(name, "ttyACM"):
+	case strings.Contains(p.Name, "ttyACM"),
+		strings.HasPrefix(strings.ToUpper(p.Name), "COM"):
 		return 2
-	case strings.Contains(name, "ttyS"):
+	case strings.Contains(p.Name, "ttyS"):
 		return 0 // last resort
 	default:
 		return 1
