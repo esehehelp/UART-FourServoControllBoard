@@ -64,7 +64,7 @@ void Servo_Init(void) {
     // 6. OC Setup
     TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;
     TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;
-    TIM_OCInitStructure.TIM_Pulse = PWM_DEFAULT;
+    TIM_OCInitStructure.TIM_Pulse = PWM_DEFAULT; // 0: servos free until commanded
     TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;
 
     TIM_OC1Init(TIM2, &TIM_OCInitStructure);
