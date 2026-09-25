@@ -32,7 +32,7 @@ build_windows() {
 
 run_tests() {
     hdr "Running Tests"
-    go test -v ./test/... && ok "All tests passed" || { err "Tests failed"; return 1; }
+    go test -v ./pkg/... ./test/... && ok "All tests passed" || { err "Tests failed"; return 1; }
 }
 
 case "${1:-linux}" in

@@ -8,51 +8,49 @@ UART-FourServoControllBoard (UART-FSCB) is a complete embedded systems project: 
 
 - `firmware/` — C firmware for the CH32X035, built with PlatformIO
 - `hardware/` — KiCad 9.0 PCB design
-- `software/` — Cross-platform Go + Fyne GUI for device control, monitoring, and calibration
+- `software/` — Cross-platform Go + Wails (React/TypeScript frontend) GUI for device control, monitoring, and calibration
 
 ## Build Commands (software/)
 
 ```bash
 cd software
 
-make build-linux     # Build Linux binary -> bin/linux/servo-controller
-make build-win       # Build Windows binary (requires mingw-w64) -> bin/windows/servo-controller.exe
-make test            # Run unit tests
+make build-linux     # wails build -> bin/servo-controller
+make build-win       # wails build -platform windows/amd64 -> bin/servo-controller.exe
+make dev             # wails dev (hot reload)
+make test            # go test ./pkg/... ./test/...
 make clean           # Remove build artifacts
 
-./build.sh all       # Build both Linux and Windows with colored output
-./build.sh linux     # Linux only
-./build.sh test      # Run tests with output
+./build.sh [linux|windows|all|test|dev|clean]
 ```
 
-CGO is required (serial port access). Windows cross-compilation requires `mingw-w64`.
+Requires the Wails v2 CLI (`~/go/bin/wails`) and npm. CGO is required (serial port access).
+`go vet .` on the main package needs `frontend/dist` (run `npm run build` in `frontend/` first).
 
 ## Software Architecture
 
-The GUI app is written in Go 1.26+ using Fyne v2. All packages live under `software/`.
+The GUI app is written in Go using Wails v2; the UI is React + TypeScript under `software/frontend/`.
 
 ### Communication Flow
 
 ```
-UI -> Controller -> SerialManager -> UART -> Firmware
-                 <- packet channel <-
+React UI -(Wails binding)-> App -> Controller -> serial.Manager -> USB-CDC -> Firmware
+React UI <-(Wails events)-- App <- Controller <- rx channel     <-
 ```
 
-- `config/config.go` — All protocol constants, command codes (0x01–0x09, 0xF0), sensor types, Kalman filter parameters, calibration constants
-- `pkg/serial/manager.go` (packet part) — Packet struct: `[0xAA | Target | Source | Command | Length | Data... | CRC8]`, with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07). `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
-- `pkg/serial/manager.go` — Goroutine-based UART manager; auto-detects ports, parses packets, exposes a receive channel
-- `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED`, `SetPDVoltage`, `RequestSensorRead`); holds ring buffers and Kalman state; runs a background processor goroutine
+- `config/config.go` — Protocol constants, command codes (0x01–0x09, 0xF0), max packet size, sensor scale factors (see firmware/docs/constants.txt), Kalman filter and calibration parameters
+- `pkg/serial/manager.go` — Packet struct `[0xAA | Target | Source | Command | Length | Data... | CRC8]` with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07); port auto-detection (WCH VID first) and probing; receive goroutine feeding a buffered channel. `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
+- `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED(duty1, duty2)`, `SetPDVoltage`, `ServoFree`, `RequestSensorRead`); parses 0x82 sensor data, holds ring buffers and Kalman state, marks data invalid after `SENSOR_TIMEOUT_MS`
 - `pkg/data/ringbuffer.go` — Thread-safe ring buffer (RWMutex, capacity 100) + 1D Kalman filter implementation
-- `pkg/calibration/state_machine.go` — Multi-state calibration: coarse binary search (100µs steps) → fine search (1µs steps) → save to flash; uses ripple detection for limit finding
-- `pkg/ui/widgets.go` — Fyne widgets: StatusBar, LogViewer, ServoControl (4x sliders, 0–3000µs), LEDControl, PDControl (5/9/15/20V presets), CalibrationControl
-- `pkg/ui/graph.go` — Custom Fyne canvas line charts for Voltage, Current, Temperature, and 4x servo feedback voltages
-- `main.go` — Window assembly, ~30 FPS update loop using `fyne.CurrentApp()` for thread-safe UI refreshes
+- `pkg/calibration/state_machine.go` — Manual position calibration: center → PWM off, user confirms min → user confirms max → compute slope/intercept → CMD 0x07 (floats little-endian)
+- `app.go` — Methods bound to JS and the ~30 FPS `sensor-data` / `plot-data` event loop; `status` / `cal-status` events
+- `frontend/src/` — React components: StatusBar, ServoControl (500–2500µs), LEDControl (LED1/LED2), PDControl (5/9/15/20V presets + custom), CalibrationPanel, SensorGraph. `wails.ts` declares the bound Go methods — keep it in sync with `app.go`
 
 ### Concurrency Model
 
-- SerialManager runs send/receive goroutines communicating via channels
-- RingBuffer uses `sync.RWMutex` for concurrent reads from UI and writes from controller
-- All Fyne UI updates must go through the Fyne event loop — use `canvas.Refresh()` or post via `fyne.CurrentApp()`; direct widget mutation from goroutines will race
+- serial.Manager runs the receive loop in a goroutine and delivers packets via a channel (closed when the manager stops)
+- RingBuffer uses `sync.RWMutex` for concurrent reads from the UI loop and writes from the controller
+- The frontend is updated only through Wails events emitted from `app.go`
 
 ### Protocol
 
@@ -64,7 +62,11 @@ Packet header byte is `0xAA`. Key commands:
 - `0x06` USB-PD voltage
 - `0x07` Save calibration to flash
 - `0x08` Get calibration data
+- `0x09` Servo free (PWM off, channel mask)
+- `0xA0` / `0xA1` Ping / Pong (ring-bus device discovery)
 - `0xF0` Enter DLM bootloader mode
+
+Max packet length is 128 bytes (data ≤ 122). Full spec: `firmware/docs/PROTOCOL.md`.
 
 Sensor response (`0x82`): 16-bit ADC values for voltage, temperature, current, and 4 feedback voltages.
 
@@ -76,4 +78,6 @@ Built with PlatformIO targeting CH32X035F7P6. Key source files in `firmware/src/
 - `adc.c/h` — Voltage (PA6), current (PA7, OPA2 PGA x32, 10mΩ shunt), NTC temp (PB1), servo feedback ADC
 - `UART.c/h` — Dual 1-Wire UART on USART2 (PA2) and USART4 (PA5) at 115200 bps
 - `usb_pd.c/h` — USB-PD voltage negotiation
-- `config.c/h` — Flash-backed configuration storage
+- `config.c/h` — Flash-backed configuration storage (one 256-byte page via `FLASH_ROM_ERASE`/`FLASH_ROM_WRITE`, CRC-32 verified on load)
+
+No RISC-V toolchain may be available; `gcc -fsyntax-only -Isrc -Ilib/Drivers/inc -DCH32X035 src/<file>.c` works as a host-side syntax check for most files.

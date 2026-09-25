@@ -19,6 +19,21 @@
 | 5..5+N-1 | Data | ... | 命令に応じたデータ |
 | 5+N | CRC8 | 0xXX | HeaderからData末尾までのCRC |
 
+- **最大パケット長**: 128 bytes (ファームウェアの受信バッファ長)。したがって Data 部 (N) は最大 **122 bytes**。
+  Length に 122 を超える値を持つパケットはファームウェアで破棄されます。
+
+### サーボチャンネルと物理ピンの対応
+チャンネル番号はタイマーチャンネルの割り当て順であり、基板上のピン並び順とは一致しません。
+
+| 物理ピン (MCU pin No.) | MCU ピン | チャンネル | タイマー |
+| :--- | :--- | :--- | :--- |
+| 5 | PC1 | **CH3** | TIM1_CH2 (Full Remap) |
+| 6 | PA0 | **CH0** | TIM2_CH1 |
+| 7 | PA1 | **CH1** | TIM2_CH2 |
+| 9 | PA3 | **CH2** | TIM2_CH4 |
+
+ピン番号順に並べると **CH3 → CH0 → CH1 → CH2** となります (`firmware/docs/pinassign.csv` 参照)。
+
 ## 3. 命令コード (Command)
 
 ### 0x01: Write (サーボ個別設定)
@@ -54,6 +69,7 @@
 - **Data**: 1–2 bytes
   - `[0]`: LED1 Duty (0-255, PWM)
   - `[1]`: LED2 Duty (0-255, PWM) — 省略時は LED2 を変更しない
+  - GUI (`software/`) は常に 2 bytes を送信します。
 
 ### 0x06: Set Voltage (USB PD PPS設定)
 USB PD PPS対応電源を使用している場合、供給電圧を変更します。
@@ -68,6 +84,8 @@ USB PD PPS対応電源を使用している場合、供給電圧を変更しま�
   - `[5:8]`: Intercept (float32, little-endian)
   - `[9:10]`: Min Pulse (uint16, big-endian)
   - `[11:12]`: Max Pulse (uint16, big-endian)
+- Slope / Intercept はファームウェアが `memcpy` で float に直接コピーするため **little-endian** です (パケット全体の既定であるビッグエンディアンの例外)。
+- `Min Pulse >= Max Pulse` のデータは無視され、保存されません。
 
 ### 0x08: Get Calibration (キャリブレーション取得)
 保存されている設定を読み出します。
@@ -77,6 +95,22 @@ USB PD PPS対応電源を使用している場合、供給電圧を変更しま�
 ### 0x09: Servo Free (PWM停止)
 指定チャンネルのPWM出力を停止し、サーボを脱力させます。再度動かすには `0x01` または `0x03` を送信します。
 - **Data**: 1 byte (ch_mask: bit0=CH0, bit1=CH1, bit2=CH2, bit3=CH3)
+
+### 0xA0: Ping (デバイス探索要求)
+リングバス上のデバイスを探索します。動作は受信したボードのロール (`0x04` CfgWrite の Role) によって異なります。
+- **Data**: なし (0 bytes)
+- **ROLE_HOST (0x01) のボードが USB から受信した場合**:
+  Target=`0xFF` (ブロードキャスト)、Source=自身のデバイスID で Ping を UART2 (リング下流) へ送信し、100 ms の探索ウィンドウを開始します。
+- **ROLE_DEVICE (0x00) のボードが受信した場合**:
+  受信したインターフェースへ `0xA1` (Pong) を返信します (Target=Ping の Source、Data=`[device_id]`)。
+
+### 0xA1: Pong (デバイス探索応答)
+- **デバイス → ホストボード**: Data 1 byte (`[0]`: 応答したデバイスのID)。
+  ROLE_HOST のボードは探索ウィンドウ中に受信した ID を最大 16 個まで記録します。
+- **ホストボード → PC (USB)**: 探索開始から 100 ms 経過後、Target=`0x00` で送信します。
+  - **Data**: N bytes (N = 発見したデバイス数、0-16)。各バイトが発見したデバイスID。
+
+> 注: 現在の実装では、ブロードキャスト (`0xFF`) 宛パケットは受信したデバイスで実行され、リングの次段へは転送されません。
 
 ### 0xF0: DLM (Download Mode)
 ブートローダー(ISP)モードへ移行するためのカウントダウンを開始します。

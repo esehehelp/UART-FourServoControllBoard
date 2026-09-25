@@ -31,7 +31,7 @@ $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
 test:
-	@go test -v ./test/...
+	@go test -v ./pkg/... ./test/...
 
 clean:
 	@rm -rf $(BIN_DIR) frontend/dist frontend/node_modules
