@@ -122,8 +122,14 @@ const (
 	CAL_WAIT_CENTER_MS = 600
 	// CAL_SAMPLE_COUNT: number of FBV ADC readings to average per position
 	CAL_SAMPLE_COUNT = 5
-	// CAL_SAMPLE_INTERVAL_MS: interval between consecutive FBV samples (ms)
-	CAL_SAMPLE_INTERVAL_MS = 20
+	// CAL_SAMPLE_TIMEOUT_MS: max wait for each new sensor response while
+	// sampling; calibration fails if the device stops answering (ms)
+	CAL_SAMPLE_TIMEOUT_MS = 500
+	// CAL_FB_RAW_MIN / CAL_FB_RAW_MAX: accepted feedback value range in ADC
+	// counts (0.1 V - 3.2 V at the 3.3 V ADC). Values at the rails mean the
+	// feedback wire is open/shorted or the input is saturated.
+	CAL_FB_RAW_MIN = 124
+	CAL_FB_RAW_MAX = 3971
 	// CAL_PULSE_MIN / CAL_PULSE_MAX: reference pulse widths stored as the min/max
 	// position commands (µs). These define the commanded range that the firmware
 	// will use; the FBV recorded at each position provides the feedback mapping.

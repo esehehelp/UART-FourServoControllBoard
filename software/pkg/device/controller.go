@@ -17,6 +17,7 @@ type SensorData struct {
 	Current  float64   // mA
 	Temp     float64   // °C
 	FBVolt   [4]float64 // FB voltage per channel (V)
+	RawFB    [4]uint16  // raw feedback value per channel as sent by the firmware
 	RawTemp  uint16    // raw temperature value
 	Timestamp time.Time
 	// Valid is false until the first response arrives and again after no
@@ -211,8 +212,10 @@ func (c *Controller) processSensorData(pkt *serial.Packet, startTime time.Time) 
 
 	// Feedback voltages: d[7+j*2 : 9+j*2]
 	fbVolts := [4]float64{}
+	rawFBs := [4]uint16{}
 	for j := 0; j < 4; j++ {
 		rawFB := (uint16(d[7+j*2]) << 8) | uint16(d[8+j*2])
+		rawFBs[j] = rawFB
 		fbVolts[j] = float64(rawFB) * config.FB_VOLTAGE_SCALE
 	}
 
@@ -238,6 +241,7 @@ func (c *Controller) processSensorData(pkt *serial.Packet, startTime time.Time) 
 	c.data.Temp = temp
 	c.data.RawTemp = rawT
 	c.data.FBVolt = fbVolts
+	c.data.RawFB = rawFBs
 	c.data.Timestamp = time.Now()
 	c.mu.Unlock()
 
