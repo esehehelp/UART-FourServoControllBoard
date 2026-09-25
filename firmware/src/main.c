@@ -9,6 +9,7 @@
 #include "usb_pd.h"
 #include "led.h"
 #include "usb_desc.h"
+#include "config.h"
 #include <stdio.h>
 
 volatile uint32_t g_ms_ticks = 0;
@@ -55,7 +56,8 @@ int main(void) {
     SystemCoreClockUpdate();
     Delay_Init();
     USART_Printf_Init(115200);
-    printf("UART 4-Servo Board v2.0 Startup\r\n");
+    printf("UART 4-Servo Board FW V%d.%d.%d Startup\r\n",
+           FW_VERSION_MAJOR, FW_VERSION_MINOR, FW_VERSION_PATCH);
 
     USB_BuildSerialFromUID();
     USBFS_RCC_Init();
