@@ -35,7 +35,7 @@ React UI <-(Wails events)-- App <- Controller <- rx channel     <-
 ```
 
 - `config/config.go` — Protocol constants, command codes (0x01–0x09, 0xF0), max packet size, sensor scale factors (see firmware/docs/constants.md), Kalman filter and calibration parameters
-- `pkg/serial/manager.go` — Packet struct `[0xAA | Target | Source | Command | Length | Data... | CRC8]` with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07); port auto-detection (WCH VID first) and probing; receive goroutine feeding a buffered channel. `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
+- `pkg/serial/manager.go` — Packet struct `[0xAA | Target | Source | TTL | Command | Length | Data... | CRC8]` with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07); port auto-detection (WCH VID first) and probing; receive goroutine feeding a buffered channel. `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
 - `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED(ch, duty)`, `SetPDVoltage`, `ServoFree`, `RequestSensorRead`); parses 0x82 sensor data, holds ring buffers and Kalman state, marks data invalid after `SENSOR_TIMEOUT_MS`
 - `pkg/data/ringbuffer.go` — Thread-safe ring buffer (RWMutex, capacity 100) + 1D Kalman filter implementation
 - `pkg/calibration/state_machine.go` — Manual position calibration: center → PWM off, user confirms min → user confirms max → compute slope/intercept → CMD 0x07 (floats little-endian)
@@ -62,7 +62,9 @@ Packet header byte is `0xAA`. Key commands:
 - `0xA0` / `0xA1` Ping / Pong (ring-bus device discovery)
 - `0xF0` Enter DLM bootloader mode
 
-Max packet length is 128 bytes (data ≤ 122). Full spec: `firmware/docs/PROTOCOL.md`.
+Max packet length is 128 bytes (7-byte framing, data ≤ 121). Packets carry a TTL (default 16) decremented per ring hop.
+Errors are reported as `0xEE [orig_cmd, error_code]` (codes: `firmware/src/error_codes.h` = `ErrCode*` in config.go); `0x04`/`0x06`/`0x07` are ACKed with `0x84`/`0x86`/`0x87`.
+Full spec: `firmware/docs/PROTOCOL.md`.
 
 Sensor response (`0x82`): 16-bit ADC values for voltage, temperature, current, and 4 feedback voltages.
 
