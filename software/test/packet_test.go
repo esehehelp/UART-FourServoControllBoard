@@ -2,6 +2,7 @@ package test
 
 import (
 "testing"
+"uart-servo-controller/pkg/device"
 "uart-servo-controller/pkg/serial"
 )
 
@@ -17,6 +18,12 @@ name: "empty",
 data: []uint8{},
 want: 0,
 },
+{
+// CRC-8 (poly 0x07, init 0x00) check value
+name: "check_123456789",
+data: []uint8("123456789"),
+want: 0xF4,
+},
 }
 
 for _, tt := range tests {
@@ -24,6 +31,9 @@ t.Run(tt.name, func(t *testing.T) {
 got := serial.CRC8(tt.data)
 if got != tt.want {
 t.Errorf("CRC8() = 0x%02x, want 0x%02x", got, tt.want)
+}
+if got := device.CRC8(tt.data); got != tt.want {
+t.Errorf("device.CRC8() = 0x%02x, want 0x%02x", got, tt.want)
 }
 })
 }

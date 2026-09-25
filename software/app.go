@@ -18,6 +18,7 @@ type SensorDataEvent struct {
 	Temp      float64    `json:"temp"`
 	FBVolt    [4]float64 `json:"fbVolt"`
 	Timestamp string     `json:"timestamp"`
+	Valid     bool       `json:"valid"` // false when no response for SENSOR_TIMEOUT_MS
 }
 
 // PlotDataEvent is emitted on the "plot-data" event (~30fps)
@@ -99,6 +100,7 @@ func (a *App) sensorLoop(ctx context.Context) {
 				Temp:      d.Temp,
 				FBVolt:    d.FBVolt,
 				Timestamp: d.Timestamp.Format("15:04:05"),
+				Valid:     d.Valid,
 			})
 
 			_, volts, currs, temps, fbv := a.ctrl.GetPlotData()
@@ -114,7 +116,7 @@ func (a *App) sensorLoop(ctx context.Context) {
 
 // ---- Bound methods (callable from JavaScript) ----
 
-// SetServo sets servo pulse width in microseconds (ch: 0-3, us: 0-3000)
+// SetServo sets servo pulse width in microseconds (ch: 0-3, us: 500-2500)
 func (a *App) SetServo(ch uint8, us uint16) error {
 	return a.ctrl.SetServo(ch, us)
 }

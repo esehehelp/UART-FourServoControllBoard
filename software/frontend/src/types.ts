@@ -4,6 +4,7 @@ export interface SensorDataEvent {
   temp: number
   fbVolt: [number, number, number, number]
   timestamp: string
+  valid: boolean // false when the device has not answered recently
 }
 
 export interface PlotDataEvent {

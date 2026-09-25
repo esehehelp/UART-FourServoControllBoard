@@ -176,7 +176,13 @@ func (sm *StateMachine) worker() {
 		return
 	}
 
-	fbAtMin := sm.sampleFB(ch)
+	fbAtMin, err := sm.sampleFB(ch)
+	if err != nil {
+		if sm.isActive() {
+			sm.fail(ch, "min position sampling failed", err)
+		}
+		return
+	}
 	sm.result.FBAtMin = fbAtMin
 	sm.notify(StateArmFreeMin, fmt.Sprintf("CH%d: Min recorded  FB=%.3fV", ch, fbAtMin))
 
@@ -187,7 +193,13 @@ func (sm *StateMachine) worker() {
 		return
 	}
 
-	fbAtMax := sm.sampleFB(ch)
+	fbAtMax, err := sm.sampleFB(ch)
+	if err != nil {
+		if sm.isActive() {
+			sm.fail(ch, "max position sampling failed", err)
+		}
+		return
+	}
 	sm.result.FBAtMax = fbAtMax
 	sm.notify(StateArmFreeMax, fmt.Sprintf("CH%d: Max recorded  FB=%.3fV", ch, fbAtMax))
 
@@ -234,13 +246,51 @@ func (sm *StateMachine) worker() {
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 // sampleFB averages CAL_SAMPLE_COUNT FBV readings for channel ch.
-func (sm *StateMachine) sampleFB(ch uint8) float64 {
+// Each reading must come from a new sensor response received after sampling
+// started (no stale data), and its raw value must be inside
+// CAL_FB_RAW_MIN..CAL_FB_RAW_MAX (feedback actually connected).
+func (sm *StateMachine) sampleFB(ch uint8) (float64, error) {
 	var sum float64
+	last := time.Now()
 	for range config.CAL_SAMPLE_COUNT {
-		sum += sm.ctrl.GetSensorData().FBVolt[ch]
-		time.Sleep(time.Duration(config.CAL_SAMPLE_INTERVAL_MS) * time.Millisecond)
+		d, err := sm.waitSensorAfter(last)
+		if err != nil {
+			return 0, err
+		}
+		last = d.Timestamp
+		if err := checkFBRaw(d.RawFB[ch]); err != nil {
+			return 0, err
+		}
+		sum += d.FBVolt[ch]
 	}
-	return sum / float64(config.CAL_SAMPLE_COUNT)
+	return sum / float64(config.CAL_SAMPLE_COUNT), nil
+}
+
+// waitSensorAfter waits for sensor data received after t.
+func (sm *StateMachine) waitSensorAfter(t time.Time) (device.SensorData, error) {
+	deadline := time.Now().Add(time.Duration(config.CAL_SAMPLE_TIMEOUT_MS) * time.Millisecond)
+	for {
+		d := sm.ctrl.GetSensorData()
+		if d.Valid && d.Timestamp.After(t) {
+			return d, nil
+		}
+		if !sm.isActive() {
+			return d, fmt.Errorf("cancelled")
+		}
+		if time.Now().After(deadline) {
+			return d, fmt.Errorf("no sensor data from device for %d ms", config.CAL_SAMPLE_TIMEOUT_MS)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// checkFBRaw rejects feedback values stuck at the ADC rails.
+func checkFBRaw(raw uint16) error {
+	if raw < config.CAL_FB_RAW_MIN || raw > config.CAL_FB_RAW_MAX {
+		return fmt.Errorf("feedback value %d outside %d-%d — is the feedback wired?",
+			raw, config.CAL_FB_RAW_MIN, config.CAL_FB_RAW_MAX)
+	}
+	return nil
 }
 
 // saveCalibration packs the result and sends CMD_CAL_SAVE to the device.

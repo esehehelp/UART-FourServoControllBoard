@@ -17,8 +17,12 @@ type SensorData struct {
 	Current  float64   // mA
 	Temp     float64   // °C
 	FBVolt   [4]float64 // FB voltage per channel (V)
+	RawFB    [4]uint16  // raw feedback value per channel as sent by the firmware
 	RawTemp  uint16    // raw temperature value
 	Timestamp time.Time
+	// Valid is false until the first response arrives and again after no
+	// sensor response has been received for SENSOR_TIMEOUT_MS.
+	Valid bool
 }
 
 // Controller manages device communication and data
@@ -87,6 +91,9 @@ func (c *Controller) SetServo(ch uint8, microseconds uint16) error {
 	if ch >= 4 {
 		return fmt.Errorf("invalid servo channel: %d", ch)
 	}
+	if microseconds < config.SERVO_MIN_PULSE {
+		microseconds = config.SERVO_MIN_PULSE
+	}
 	if microseconds > config.SERVO_MAX_PULSE {
 		microseconds = config.SERVO_MAX_PULSE
 	}
@@ -134,6 +141,7 @@ func (c *Controller) processorLoop() {
 	defer ticker.Stop()
 
 	startTime := time.Now()
+	rxChan := c.sm.RxChan()
 
 	for {
 		select {
@@ -141,10 +149,17 @@ func (c *Controller) processorLoop() {
 			return
 
 		case <-ticker.C:
+			c.checkTimeout()
 			// Periodically request sensor data
 			c.RequestSensorRead()
 
-		case pkt := <-c.sm.RxChan():
+		case pkt, ok := <-rxChan:
+			if !ok {
+				// Serial manager stopped and closed the channel. A nil channel
+				// blocks forever, so this case stops firing instead of spinning.
+				rxChan = nil
+				continue
+			}
 			if pkt != nil {
 				c.processPacket(pkt, startTime)
 			}
@@ -154,6 +169,16 @@ func (c *Controller) processorLoop() {
 				fmt.Printf("Serial error: %v\n", err)
 			}
 		}
+	}
+}
+
+// checkTimeout marks the sensor data invalid when no response has arrived
+// for SENSOR_TIMEOUT_MS, so stale values are not shown as live data.
+func (c *Controller) checkTimeout() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.data.Valid && time.Since(c.data.Timestamp) > time.Duration(config.SENSOR_TIMEOUT_MS)*time.Millisecond {
+		c.data.Valid = false
 	}
 }
 
@@ -186,9 +211,21 @@ func (c *Controller) processSensorData(pkt *serial.Packet, startTime time.Time) 
 
 	// Feedback voltages: d[7+j*2 : 9+j*2]
 	fbVolts := [4]float64{}
+	rawFBs := [4]uint16{}
 	for j := 0; j < 4; j++ {
 		rawFB := (uint16(d[7+j*2]) << 8) | uint16(d[8+j*2])
+		rawFBs[j] = rawFB
 		fbVolts[j] = float64(rawFB) * config.FB_VOLTAGE_SCALE
+	}
+
+	// After a timeout (disconnect / reconnect) start the filters from scratch
+	// instead of blending with values from the previous session.
+	c.mu.RLock()
+	wasValid := c.data.Valid
+	c.mu.RUnlock()
+	if !wasValid {
+		c.kfV.Reset()
+		c.kfI.Reset()
 	}
 
 	// Apply Kalman filtering
@@ -197,11 +234,13 @@ func (c *Controller) processSensorData(pkt *serial.Packet, startTime time.Time) 
 
 	// Update data storage
 	c.mu.Lock()
+	c.data.Valid = true
 	c.data.Voltage = filteredV
 	c.data.Current = filteredI
 	c.data.Temp = temp
 	c.data.RawTemp = rawT
 	c.data.FBVolt = fbVolts
+	c.data.RawFB = rawFBs
 	c.data.Timestamp = time.Now()
 	c.mu.Unlock()
 
@@ -222,8 +261,9 @@ func calcTemperature(rawTemp uint16) float64 {
 		return 0
 	}
 
-	// R = R0 * (4095 - T) / T
-	res := config.TEMP_R0 * float64(4095-rawTemp) / float64(rawTemp)
+	// Divider: Vout/Vref = R_ntc / (R_series + R_ntc)
+	// => R_ntc = R_series * raw / (4095 - raw)
+	res := config.TEMP_SERIES_R * float64(rawTemp) / float64(4095-rawTemp)
 
 	// T = 1 / (ln(R/R0)/B + 1/T0) - 273.15
 	logRatio := math.Log(res / config.TEMP_R0)

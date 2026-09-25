@@ -22,13 +22,14 @@ typedef struct {
     uint8_t role;        // ROLE_DEVICE or ROLE_HOST
     uint8_t _pad[2];     // alignment
     ServoCal_t cal[4];
-    uint32_t crc;
+    uint32_t crc;        // CRC-32 of all fields above (see Config_CalcCRC)
 } Config_t;
 
 extern Config_t g_config;
 
 void Config_Load(void);
-void Config_Save(void);
+int  Config_Save(void);  // updates crc; returns 1 on verified write, 0 on failure
 void Config_SetDefault(void);
+uint32_t Config_CalcCRC(const Config_t *cfg);
 
 #endif

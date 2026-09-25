@@ -8,13 +8,13 @@
 ## 特徴 (Features)
 
 * **超小型サイズ:** 22.82mm x 23.62mm
-* **USB PD対応:** CCピン制御により、モバイルバッテリーやPD充電器から5V/3Aを直接引き出し可能
-  * PPSもそのうち対応
-  * USB経由の通信対応
-  * 背面PADに4.7k抵抗を直列でショートさせることでDLM移行
+* **USB PD対応:** CCピン制御により、モバイルバッテリーやPD充電器から電源を直接引き出し可能
+  * 固定電圧 PDO に加え PPS (APDO) による電圧指定に対応 (`0x06` コマンド, mV 単位)
+  * USB (CDC) 経由の通信対応
+  * DLM (ブートローダ) 移行: `0xF0` コマンド、または背面PADに4.7k抵抗を直列でショート
     * USB経由の書き込み可能
 * **電流監視機能:**
-  * ローサイド電流検知回路を搭載（CH32X035内蔵OPA + 20mΩシャント抵抗）
+  * ローサイド電流検知回路を搭載（CH32X035内蔵OPA + 10mΩシャント抵抗）
   * サーボの負荷状態をモニタリングし、過負荷時の緊急停止などが実装可能
   * 停止閾値などは別途ソフトウェアで書き込み可能
 * **電圧監視機能**
@@ -22,9 +22,10 @@
   * PPSと組み合わせたフィードバック制御も行う予定
 * **温度監視**
   * NTCサーミスタによってVBUS-GNDに近い位置の温度計測が可能
-* **プロッティング**
-  * Goによるスクリプトによってパラメータの制御やプロッティング、プログラム書き込みなどが可能になる予定。
-  * /firmware, /softwareにソースあり
+* **PC用GUI** (`software/`)
+  * Go + Wails (React) 製。USB 接続したボードを自動検出
+  * 電圧・電流・温度・サーボフィードバックのリアルタイムプロット
+  * サーボ 4ch / LED 2ch / USB-PD 電圧の操作、サーボ位置キャリブレーション
 * **MCU:** WCH CH32X035F7P6 (RISC-V, 48MHz)
 * **制御IF:** 1Wire-UART, USB
 * **その他:**
@@ -49,11 +50,49 @@
 | **コンデンサ** | 100uF / 35V (Polymer) + 22uF (Ceramic) |
 | **基板サイズ** | 22.86mm x 23.62mm |
 
+### サーボチャンネルと物理ピン
+
+チャンネル番号は基板上のピン並び順と一致しません (ピン番号順に **CH3 → CH0 → CH1 → CH2**)。
+
+| MCU ピン No. | MCU ピン | チャンネル |
+| :--- | :--- | :--- |
+| 5 | PC1 | CH3 |
+| 6 | PA0 | CH0 |
+| 7 | PA1 | CH1 |
+| 9 | PA3 | CH2 |
+
+## リポジトリ構成
+
+| ディレクトリ | 内容 |
+| :--- | :--- |
+| `firmware/` | CH32X035 用ファームウェア (PlatformIO)。通信仕様は [`firmware/docs/PROTOCOL.md`](firmware/docs/PROTOCOL.md) |
+| `software/` | PC 用 GUI (Go + Wails)。詳細は [`software/README.md`](software/README.md) |
+| `hardware/` | KiCad 9.0 設計データ |
+
 ## 開発環境 (Development)
 
 * **IDE:** Goland, CLion
-* **Framework:** pio, ch32fun
-* **Writer:** WCH-LinkE
+* **Firmware:** PlatformIO (`platform = ch32v`)
+* **Writer:** WCH-LinkE、または USB 経由 (DLM + wchisp)
+
+### ファームウェアのビルド・書き込み
+
+```bash
+cd firmware
+pio run                 # ビルド
+pio run -t upload       # WCH-LinkE 等で書き込み
+
+# USB 経由 (0xF0 で DLM に移行してから wchisp で書き込み)
+python test/dlm_upload.py <PORT> .pio/build/genericCH32X035F7P6/firmware.bin
+```
+
+### GUI のビルド
+
+```bash
+cd software
+~/go/bin/wails build    # -> build/bin/servo-controller (Wails CLI が必要)
+go test ./pkg/... ./test/...   # Go ユニットテスト
+```
 
 ## 設計データ (Design Data)
 

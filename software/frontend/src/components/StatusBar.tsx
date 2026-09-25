@@ -27,7 +27,12 @@ export default function StatusBar() {
         <span className="status-dot" style={{ background: dot }} />
         <span>{status.msg}</span>
       </div>
-      {sensor && (
+      {sensor && !sensor.valid && (
+        <div className="status-item" style={{ color: 'var(--text-dim)' }}>
+          No sensor data
+        </div>
+      )}
+      {sensor && sensor.valid && (
         <>
           <div className="status-item">
             <span>V:</span>
