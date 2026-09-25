@@ -116,7 +116,7 @@ func (a *App) sensorLoop(ctx context.Context) {
 
 // ---- Bound methods (callable from JavaScript) ----
 
-// SetServo sets servo pulse width in microseconds (ch: 0-3, us: 0-3000)
+// SetServo sets servo pulse width in microseconds (ch: 0-3, us: 500-2500)
 func (a *App) SetServo(ch uint8, us uint16) error {
 	return a.ctrl.SetServo(ch, us)
 }

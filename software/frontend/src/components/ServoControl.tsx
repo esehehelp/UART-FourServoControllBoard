@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { SetServo } from '../wails'
 
 const CHANNELS = [0, 1, 2, 3]
-const MIN = 0
-const MAX = 3000
+// Keep in sync with SERVO_MIN_PULSE / SERVO_MAX_PULSE in config/config.go
+const MIN = 500
+const MAX = 2500
 const DEFAULT = 1500
 
 export default function ServoControl() {

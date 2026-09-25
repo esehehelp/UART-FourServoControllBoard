@@ -90,6 +90,9 @@ func (c *Controller) SetServo(ch uint8, microseconds uint16) error {
 	if ch >= 4 {
 		return fmt.Errorf("invalid servo channel: %d", ch)
 	}
+	if microseconds < config.SERVO_MIN_PULSE {
+		microseconds = config.SERVO_MIN_PULSE
+	}
 	if microseconds > config.SERVO_MAX_PULSE {
 		microseconds = config.SERVO_MAX_PULSE
 	}

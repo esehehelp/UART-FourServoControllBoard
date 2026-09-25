@@ -48,9 +48,13 @@ const (
 )
 
 // Servo constants
+// SERVO_MIN_PULSE / SERVO_MAX_PULSE match the firmware default calibration
+// range (firmware/src/config.c: min_pulse=500, max_pulse=2500). The firmware
+// clamps to the per-channel calibrated range, so values outside it have no
+// effect.
 const (
-	SERVO_MIN_PULSE    = 0
-	SERVO_MAX_PULSE    = 3000
+	SERVO_MIN_PULSE    = 500
+	SERVO_MAX_PULSE    = 2500
 	SERVO_DEFAULT      = 1500
 	NUM_SERVOS         = 4
 )
