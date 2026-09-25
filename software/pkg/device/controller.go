@@ -2,6 +2,7 @@ package device
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -38,6 +39,33 @@ type Controller struct {
 	kfV   *data.KalmanFilter
 	kfI   *data.KalmanFilter
 	done  chan struct{}
+
+	// ACK / error handling (#51)
+	pmu     sync.Mutex
+	pending []*ackWaiter
+	onError func(*DeviceError)
+	sendFn  func(*serial.Packet) error // nil: c.sm.Send (overridden in tests)
+}
+
+// DeviceError is an error response (RESP_ERROR) reported by the firmware.
+type DeviceError struct {
+	Cmd  uint8 // command that failed
+	Code uint8 // error code (config.ErrCode*)
+}
+
+func (e *DeviceError) Error() string {
+	name, ok := config.ErrCodeNames[e.Code]
+	if !ok {
+		name = "unknown error"
+	}
+	return fmt.Sprintf("device error on cmd 0x%02X: %s (0x%02X)", e.Cmd, name, e.Code)
+}
+
+// ackWaiter is a command waiting for its ACK or error response
+type ackWaiter struct {
+	reqCmd uint8
+	ackCmd uint8
+	result chan error
 }
 
 // NewController creates a new device controller
@@ -60,6 +88,67 @@ func NewController(sm *serial.Manager) *Controller {
 
 	go ctl.processorLoop()
 	return ctl
+}
+
+// SetErrorHandler registers a callback for device errors that no command is
+// waiting for (e.g. a rejected servo write). Called from the processor
+// goroutine.
+func (c *Controller) SetErrorHandler(f func(*DeviceError)) {
+	c.pmu.Lock()
+	c.onError = f
+	c.pmu.Unlock()
+}
+
+func (c *Controller) send(pkt *serial.Packet) error {
+	if c.sendFn != nil {
+		return c.sendFn(pkt)
+	}
+	return c.sm.Send(pkt)
+}
+
+// sendWithAck sends pkt and waits for ackCmd, a RESP_ERROR for pkt.Cmd
+// (returned as *DeviceError) or ACK_TIMEOUT_MS.
+func (c *Controller) sendWithAck(pkt *serial.Packet, ackCmd uint8) error {
+	w := &ackWaiter{reqCmd: pkt.Cmd, ackCmd: ackCmd, result: make(chan error, 1)}
+	c.pmu.Lock()
+	c.pending = append(c.pending, w)
+	c.pmu.Unlock()
+	defer c.removeWaiter(w)
+
+	if err := c.send(pkt); err != nil {
+		return err
+	}
+	select {
+	case err := <-w.result:
+		return err
+	case <-time.After(time.Duration(config.ACK_TIMEOUT_MS) * time.Millisecond):
+		return fmt.Errorf("no response to cmd 0x%02X within %d ms", pkt.Cmd, config.ACK_TIMEOUT_MS)
+	}
+}
+
+func (c *Controller) removeWaiter(w *ackWaiter) {
+	c.pmu.Lock()
+	defer c.pmu.Unlock()
+	for i, p := range c.pending {
+		if p == w {
+			c.pending = append(c.pending[:i], c.pending[i+1:]...)
+			return
+		}
+	}
+}
+
+// resolveWaiter completes the oldest waiter matching match(); false if none.
+func (c *Controller) resolveWaiter(match func(*ackWaiter) bool, err error) bool {
+	c.pmu.Lock()
+	defer c.pmu.Unlock()
+	for i, p := range c.pending {
+		if match(p) {
+			c.pending = append(c.pending[:i], c.pending[i+1:]...)
+			p.result <- err
+			return true
+		}
+	}
+	return false
 }
 
 // Stop stops the controller
@@ -100,39 +189,45 @@ func (c *Controller) SetServo(ch uint8, microseconds uint16) error {
 
 	data := []uint8{ch, uint8(microseconds >> 8), uint8(microseconds & 0xFF)}
 	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_SERVO_WRITE, data)
-	return c.sm.Send(pkt)
+	return c.send(pkt)
 }
 
 // SetLED sends LED control command (ch: 0=LED1, 1=LED2; duty: 0-255)
 func (c *Controller) SetLED(ch, duty uint8) error {
 	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_LED_SET, []uint8{ch, duty})
-	return c.sm.Send(pkt)
+	return c.send(pkt)
 }
 
-// SetPDVoltage sends USB-PD voltage setting command
+// SetPDVoltage requests a USB-PD voltage and waits for the device's ACK.
+// Requests outside PD_VOLTAGE_MIN..PD_VOLTAGE_MAX_UI are refused (#38).
 func (c *Controller) SetPDVoltage(millivolts uint16) error {
+	if millivolts < config.PD_VOLTAGE_MIN || millivolts > config.PD_VOLTAGE_MAX_UI {
+		return fmt.Errorf("voltage %d mV outside the V0.8 board limit (%d-%d mV)",
+			millivolts, config.PD_VOLTAGE_MIN, config.PD_VOLTAGE_MAX_UI)
+	}
 	data := []uint8{uint8(millivolts >> 8), uint8(millivolts & 0xFF)}
 	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_PD_VOLTAGE, data)
-	return c.sm.Send(pkt)
+	return c.sendWithAck(pkt, config.RESP_PD_ACK)
 }
 
 // RequestSensorRead requests sensor data
 func (c *Controller) RequestSensorRead() error {
 	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_SENSOR_READ, []uint8{config.SENSOR_TYPE_ALL})
-	return c.sm.Send(pkt)
+	return c.send(pkt)
 }
 
-// RequestCalibrationSave sends calibration save command
+// RequestCalibrationSave sends calibration save command and waits until the
+// device confirms the flash write (RESP_CAL_ACK) or reports an error.
 func (c *Controller) RequestCalibrationSave(data []uint8) error {
 	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_CAL_SAVE, data)
-	return c.sm.Send(pkt)
+	return c.sendWithAck(pkt, config.RESP_CAL_ACK)
 }
 
 // ServoFree disables PWM output for channels specified by chMask (bit0=CH0..bit3=CH3).
 // The servo becomes limp. Call SetServo to re-engage.
 func (c *Controller) ServoFree(chMask uint8) error {
 	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_SERVO_FREE, []uint8{chMask})
-	return c.sm.Send(pkt)
+	return c.send(pkt)
 }
 
 // processorLoop handles incoming packets and periodic sensor reads
@@ -184,8 +279,26 @@ func (c *Controller) checkTimeout() {
 
 // processPacket processes an incoming packet
 func (c *Controller) processPacket(pkt *serial.Packet, startTime time.Time) {
-	if pkt.Cmd == config.RESP_SENSOR_DATA {
+	switch pkt.Cmd {
+	case config.RESP_SENSOR_DATA:
 		c.processSensorData(pkt, startTime)
+	case config.RESP_CFG_ACK, config.RESP_PD_ACK, config.RESP_CAL_ACK:
+		c.resolveWaiter(func(w *ackWaiter) bool { return w.ackCmd == pkt.Cmd }, nil)
+	case config.RESP_ERROR:
+		if len(pkt.Data) < 2 {
+			return
+		}
+		devErr := &DeviceError{Cmd: pkt.Data[0], Code: pkt.Data[1]}
+		if c.resolveWaiter(func(w *ackWaiter) bool { return w.reqCmd == devErr.Cmd }, devErr) {
+			return
+		}
+		log.Printf("%v", devErr)
+		c.pmu.Lock()
+		onError := c.onError
+		c.pmu.Unlock()
+		if onError != nil {
+			onError(devErr)
+		}
 	}
 }
 

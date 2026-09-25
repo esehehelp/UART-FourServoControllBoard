@@ -35,6 +35,14 @@ type StatusEvent struct {
 	Color string `json:"color"`
 }
 
+// DeviceErrorEvent is emitted on the "device-error" event when the firmware
+// rejects a command that nothing is waiting for (e.g. a servo write)
+type DeviceErrorEvent struct {
+	Cmd  uint8  `json:"cmd"`
+	Code uint8  `json:"code"`
+	Msg  string `json:"msg"`
+}
+
 // CalStatusEvent is emitted on the "cal-status" event during calibration
 type CalStatusEvent struct {
 	State int    `json:"state"`
@@ -66,6 +74,9 @@ func (a *App) startup(ctx context.Context) {
 	})
 
 	a.ctrl = device.NewController(a.sm)
+	a.ctrl.SetErrorHandler(func(e *device.DeviceError) {
+		runtime.EventsEmit(ctx, "device-error", DeviceErrorEvent{Cmd: e.Cmd, Code: e.Code, Msg: e.Error()})
+	})
 
 	a.cal = calibration.NewStateMachine(a.ctrl, func(state calibration.State, msg string) {
 		runtime.EventsEmit(ctx, "cal-status", CalStatusEvent{State: int(state), Msg: msg})
@@ -126,7 +137,8 @@ func (a *App) SetLED(ch, duty uint8) error {
 	return a.ctrl.SetLED(ch, duty)
 }
 
-// SetPDVoltage sets USB-PD negotiated voltage in millivolts
+// SetPDVoltage sets USB-PD negotiated voltage in millivolts (5000-12000) and
+// returns an error if the device rejects it or does not answer
 func (a *App) SetPDVoltage(millivolts uint16) error {
 	return a.ctrl.SetPDVoltage(millivolts)
 }

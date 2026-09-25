@@ -15,10 +15,12 @@ import (
 )
 
 // Packet represents a protocol packet
+// Wire format: [0xAA | Target | Source | TTL | Cmd | Len | Data... | CRC8]
 type Packet struct {
 	Header uint8
 	Target uint8
 	Source uint8
+	TTL    uint8 // hop limit, decremented by each ring node (#13)
 	Cmd    uint8
 	Data   []uint8
 	CRC    uint8
@@ -47,6 +49,7 @@ func NewPacket(target, cmd uint8, data []uint8) *Packet {
 		Header: config.PKT_HEADER,
 		Target: target,
 		Source: config.HOST_ID,
+		TTL:    config.DEFAULT_TTL,
 		Cmd:    cmd,
 		Data:   make([]uint8, len(data)),
 	}
@@ -56,8 +59,8 @@ func NewPacket(target, cmd uint8, data []uint8) *Packet {
 
 // Marshal serializes packet to bytes with CRC
 func (p *Packet) Marshal() []uint8 {
-	buf := make([]uint8, 0, 6+len(p.Data))
-	buf = append(buf, p.Header, p.Target, p.Source, p.Cmd, uint8(len(p.Data)))
+	buf := make([]uint8, 0, config.PKT_OVERHEAD+len(p.Data))
+	buf = append(buf, p.Header, p.Target, p.Source, p.TTL, p.Cmd, uint8(len(p.Data)))
 	buf = append(buf, p.Data...)
 	crc := CRC8(buf)
 	buf = append(buf, crc)
@@ -66,7 +69,7 @@ func (p *Packet) Marshal() []uint8 {
 
 // Unmarshal deserializes packet from bytes
 func Unmarshal(data []uint8) (*Packet, error) {
-	if len(data) < 6 {
+	if len(data) < config.PKT_OVERHEAD {
 		return nil, fmt.Errorf("packet too short: %d bytes", len(data))
 	}
 
@@ -74,14 +77,14 @@ func Unmarshal(data []uint8) (*Packet, error) {
 		return nil, fmt.Errorf("invalid header: 0x%02x", data[0])
 	}
 
-	dataLen := int(data[4])
-	expectedLen := 6 + dataLen
+	dataLen := int(data[5])
+	expectedLen := config.PKT_OVERHEAD + dataLen
 
 	if len(data) < expectedLen {
 		return nil, fmt.Errorf("incomplete packet: expected %d bytes, got %d", expectedLen, len(data))
 	}
 
-	payloadLen := 5 + dataLen
+	payloadLen := config.PKT_OVERHEAD - 1 + dataLen
 	crcCalc := CRC8(data[:payloadLen])
 	crcRecv := data[payloadLen]
 
@@ -93,19 +96,20 @@ func Unmarshal(data []uint8) (*Packet, error) {
 		Header: data[0],
 		Target: data[1],
 		Source: data[2],
-		Cmd:    data[3],
+		TTL:    data[3],
+		Cmd:    data[4],
 		Data:   make([]uint8, dataLen),
 		CRC:    crcRecv,
 	}
 
-	copy(pkt.Data, data[5:5+dataLen])
+	copy(pkt.Data, data[6:6+dataLen])
 
 	return pkt, nil
 }
 
 // String returns a human-readable representation
 func (p *Packet) String() string {
-	return fmt.Sprintf("Pkt{Tgt:0x%02x, Cmd:0x%02x, Len:%d, CRC:0x%02x}", p.Target, p.Cmd, len(p.Data), p.CRC)
+	return fmt.Sprintf("Pkt{Tgt:0x%02x, Src:0x%02x, TTL:%d, Cmd:0x%02x, Len:%d, CRC:0x%02x}", p.Target, p.Source, p.TTL, p.Cmd, len(p.Data), p.CRC)
 }
 
 // Manager handles serial communication
@@ -254,14 +258,14 @@ func (m *Manager) processBuffer(buffer *[]uint8) {
 			*buffer = (*buffer)[headerIdx:]
 		}
 
-		// Need at least 6 bytes to read length field
-		if len(*buffer) < 6 {
+		// Need the full framing to read the length field
+		if len(*buffer) < config.PKT_OVERHEAD {
 			return
 		}
 
 		// Extract packet length
-		dataLen := int((*buffer)[4])
-		expectedLen := 6 + dataLen
+		dataLen := int((*buffer)[5])
+		expectedLen := config.PKT_OVERHEAD + dataLen
 
 		if len(*buffer) < expectedLen {
 			// Incomplete packet, wait for more data
@@ -420,11 +424,11 @@ func findPacket(buf []uint8) *Packet {
 		if buf[i] != config.PKT_HEADER {
 			continue
 		}
-		if len(buf)-i < 6 {
+		if len(buf)-i < config.PKT_OVERHEAD {
 			break
 		}
-		dataLen := int(buf[i+4])
-		end := i + 6 + dataLen
+		dataLen := int(buf[i+5])
+		end := i + config.PKT_OVERHEAD + dataLen
 		if len(buf) < end {
 			break
 		}

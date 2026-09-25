@@ -19,6 +19,12 @@ export interface StatusEvent {
   color: string
 }
 
+export interface DeviceErrorEvent {
+  cmd: number
+  code: number
+  msg: string
+}
+
 export interface CalStatusEvent {
   state: number
   msg: string
