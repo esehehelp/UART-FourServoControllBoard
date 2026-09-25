@@ -2,46 +2,7 @@ import serial
 import sys
 import time
 import math
-
-def crc8(data):
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80:
-                crc = (crc << 1) ^ 0x07
-            else:
-                crc <<= 1
-            crc &= 0xFF
-    return crc
-
-def build_packet(target_id, source_id, cmd, data):
-    pkt = bytearray([0xAA, target_id, source_id, cmd, len(data)]) + bytearray(data)
-    pkt.append(crc8(pkt))
-    return pkt
-
-def parse_packet(pkt_data):
-    if len(pkt_data) < 6:
-        return None
-    
-    header, target, source, cmd, length = pkt_data[:5]
-    if header != 0xAA:
-        return None
-    
-    data = pkt_data[5:5+length]
-    if len(pkt_data) < 6 + length:
-        return None
-        
-    crc = pkt_data[5+length]
-    if crc != crc8(pkt_data[:5+length]):
-        return None
-        
-    return {
-        "target": target,
-        "source": source,
-        "cmd": cmd,
-        "data": data
-    }
+from protocol_utils import build_packet, read_packet, RESP_SENSOR_DATA, RESP_ERROR, error_text
 
 def calculate_temp(raw_adc):
     if raw_adc == 0 or raw_adc >= 4095: return 0.0
@@ -64,14 +25,16 @@ def read_sensors(port):
             pkt = build_packet(0x01, 0x00, 0x02, [0x00])
             ser.write(pkt)
             
-            # Response: AA, 00, 01, 82, 07, Type, V_H, V_L, T_H, T_L, C_H, C_L, CRC (13 bytes)
-            resp = ser.read(13)
-            if not resp:
+            # Response 0x82: Type, V, T, C, FB0-3 (15 bytes of data)
+            result = read_packet(ser, RESP_SENSOR_DATA)
+            if not result:
                 print("No response.")
                 return
+            if result["cmd"] == RESP_ERROR:
+                print(f"Device error: {error_text(result)}")
+                return
 
-            result = parse_packet(resp)
-            if result and result["cmd"] == 0x82:
+            if result["cmd"] == RESP_SENSOR_DATA:
                 data = result["data"]
                 if len(data) >= 7:
                     v_raw = (data[1] << 8) | data[2]
@@ -80,8 +43,8 @@ def read_sensors(port):
                     
                     voltage = (v_raw / 4095.0) * 3.3 * 6.1
                     temp_c = calculate_temp(t_raw)
-                    # Current: Gain=16, Shunt=0.01 Ohm
-                    current_ma = (c_raw / 4095.0) * 3.3 / (16.0 * 0.01) * 1000.0
+                    # Current: OPA2 PGA x32, Shunt=0.01 Ohm (firmware/docs/constants.md)
+                    current_ma = (c_raw / 4095.0) * 3.3 / (32.0 * 0.01) * 1000.0
                     
                     print("\n" + "="*30)
                     print(f" Board ID:      0x{result['source']:02X}")

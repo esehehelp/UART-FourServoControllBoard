@@ -11,6 +11,7 @@ import numpy as np
 import sys
 import struct
 import queue
+from protocol_utils import build_packet, crc8, OVERHEAD
 
 # --- Signal Processing ---
 class KalmanFilter:
@@ -24,16 +25,6 @@ class KalmanFilter:
         return self.x
 
 # --- Serial Communication Management ---
-def crc8(data):
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80: crc = (crc << 1) ^ 0x07
-            else: crc <<= 1
-            crc &= 0xFF
-    return crc
-
 class SerialManager:
     def __init__(self, pkt_queue, status_cb):
         self.ser = None; self.running = True
@@ -49,9 +40,9 @@ class SerialManager:
             try:
                 if self.ser.in_waiting > 0:
                     buffer.extend(self.ser.read(self.ser.in_waiting))
-                    while len(buffer) >= 6:
+                    while len(buffer) >= OVERHEAD:
                         if buffer[0] == 0xAA:
-                            t_len = 6 + buffer[4]
+                            t_len = OVERHEAD + buffer[5]
                             if len(buffer) >= t_len:
                                 pkt = buffer[:t_len]
                                 if crc8(pkt[:-1]) == pkt[-1]:
@@ -73,8 +64,7 @@ class SerialManager:
 
     def send(self, target, cmd, data):
         if self.ser and self.ser.is_open:
-            pkt = bytearray([0xAA, target, 0x00, cmd, len(data)]) + bytearray(data)
-            pkt.append(crc8(pkt))
+            pkt = build_packet(target, 0x00, cmd, data)
             try: self.ser.write(pkt)
             except: self.ser = None
 
@@ -183,8 +173,8 @@ class ServoControlApp:
 
     def update_loop(self):
         while not self.pkt_queue.empty():
-            p = self.pkt_queue.get(); d = p[5:-1]
-            if p[3] == 0x82:
+            p = self.pkt_queue.get(); d = p[6:-1]
+            if p[4] == 0x82:
                 v = ((d[1]<<8)|d[2])*0.00491; i = ((d[5]<<8)|d[6])*2.518; t_raw = (d[3]<<8)|d[4]
                 self.v_history.append(v); self.times.append(time.time()-self.start_time)
                 self.v_data.append(self.kf_v.update(v)); self.i_data.append(self.kf_i.update(i))
