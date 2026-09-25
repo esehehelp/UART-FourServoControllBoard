@@ -11,7 +11,7 @@
 * **USB PD対応:** CCピン制御により、モバイルバッテリーやPD充電器から電源を直接引き出し可能
   * 固定電圧 PDO に加え PPS (APDO) による電圧指定に対応 (`0x06` コマンド, mV 単位)
   * USB (CDC) 経由の通信対応
-  * DLM (ブートローダ) 移行: `0xF0` コマンド、または背面PADに4.7k抵抗を直列でショート
+  * DLM (ブートローダ) 移行: `0xF0` コマンド、または背面の JP1 (DLM_JMP) をショート (R9 5.1k 経由で D+ をプルアップ)
     * USB経由の書き込み可能
 * **電流監視機能:**
   * ローサイド電流検知回路を搭載（CH32X035内蔵OPA + 10mΩシャント抵抗）
@@ -42,7 +42,7 @@
 | 項目 | 内容 |
 | :--- | :--- |
 | **MCU** | WCH CH32X035F7P6 (TSSOP-20) |
-| **入力電圧** | USB VBUS (5V-20V) または EXT_IN (5V〜20V) |
+| **入力電圧** | USB VBUS (5V-20V) または EXT_IN (5V〜20V)。V0.8 は 3.3V LDO の入力耐圧のため USB-PD 要求をファームで 16.8V、GUI で 12V までに制限 (#38) |
 | **ロジック電圧** | 3.3V (XC6206 LDO内蔵) |
 | **出力チャンネル** | 4PWM |
 | **通信** | 1-Wire UARTx2 (Default: 115200bps, 8N1) |
@@ -50,16 +50,18 @@
 | **コンデンサ** | 100uF / 35V (Polymer) + 22uF (Ceramic) |
 | **基板サイズ** | 22.86mm x 23.62mm |
 
-### サーボチャンネルと物理ピン
+### サーボチャンネルとコネクタ
 
-チャンネル番号は基板上のピン並び順と一致しません (ピン番号順に **CH3 → CH0 → CH1 → CH2**)。
+チャンネル番号はサーボコネクタ J3 のピン順・回路図のネット名 (PWM0〜3) と一致しません (J3 の 1 番ピンから **CH2 → CH1 → CH0 → CH3**)。
 
-| MCU ピン No. | MCU ピン | チャンネル |
-| :--- | :--- | :--- |
-| 5 | PC1 | CH3 |
-| 6 | PA0 | CH0 |
-| 7 | PA1 | CH1 |
-| 9 | PA3 | CH2 |
+| J3 ピン | 回路図ネット | MCU ピン | チャンネル |
+| :--- | :--- | :--- | :--- |
+| 1 | PWM0/ADC0 | PA3 | CH2 |
+| 2 | PWM1/ADC1 | PA1 | CH1 |
+| 3 | PWM2/ADC2 | PA0 | CH0 |
+| 4 | PWM3/ADC3 | PC1 | CH3 |
+
+ピンアサインの詳細は [`docs/pinassign.md`](docs/pinassign.md)、回路定数は [`firmware/docs/constants.md`](firmware/docs/constants.md)。
 
 ## リポジトリ構成
 
@@ -67,6 +69,7 @@
 | :--- | :--- |
 | `firmware/` | CH32X035 用ファームウェア (PlatformIO)。通信仕様は [`firmware/docs/PROTOCOL.md`](firmware/docs/PROTOCOL.md) |
 | `software/` | PC 用 GUI (Go + Wails)。詳細は [`software/README.md`](software/README.md) |
+| `uploader/` | USB 経由のファームウェア書き込みツール (Go、`pio run -t upload` から使用) |
 | `hardware/` | KiCad 9.0 設計データ |
 
 ## 開発環境 (Development)
@@ -80,10 +83,14 @@
 ```bash
 cd firmware
 pio run                 # ビルド
-pio run -t upload       # WCH-LinkE 等で書き込み
 
-# USB 経由 (0xF0 で DLM に移行してから wchisp で書き込み)
-python test/dlm_upload.py <PORT> .pio/build/genericCH32X035F7P6/firmware.bin
+# USB 経由の書き込み (WCH-LinkE 不要)
+#   0xF0 で DLM に移行 -> BootROM を待つ -> wchisp flash (uploader/ を初回に go build)
+pio run -t upload
+pio run -t upload --upload-port /dev/ttyACM0   # ポートを指定する場合
+
+# uploader を単体で使う場合
+cd ../uploader && make && bin/uploader ../firmware/.pio/build/genericCH32X035F7P6/firmware.bin
 ```
 
 ### GUI のビルド

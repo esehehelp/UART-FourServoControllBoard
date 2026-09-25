@@ -180,6 +180,7 @@ static void Request_PDO(uint8_t index, uint16_t mv, uint16_t ma) {
 }
 
 void USB_PD_Request_Voltage(uint16_t mv) {
+    if (mv < PD_MIN_MV || mv > PD_MAX_SAFE_MV) return; // #38: never request unsafe voltages
     g_requested_mv = mv;
     g_pending_request = 1;
 }

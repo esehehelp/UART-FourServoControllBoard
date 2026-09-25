@@ -1,22 +1,9 @@
 import serial
 import time
-
-def crc8(data):
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80:
-                crc = (crc << 1) ^ 0x07
-            else:
-                crc <<= 1
-            crc &= 0xFF
-    return crc
+from protocol_utils import build_packet, read_packet, RESP_ERROR, error_text
 
 def send_packet(ser, target, cmd, data, source=0x00):
-    pkt = bytearray([0xAA, target, source, cmd, len(data)]) + bytearray(data)
-    pkt.append(crc8(pkt))
-    ser.write(pkt)
+    ser.write(build_packet(target, source, cmd, data))
 
 def set_servo(ser, idx, pos, target=0x01):
     # pos: 500 to 2500 (us)
@@ -34,23 +21,25 @@ def set_role(ser, target, role):
 def discover_devices(ser, host_id=0x01):
     ser.reset_input_buffer()
     send_packet(ser, host_id, 0xA0, [])
-    time.sleep(0.15)
-    data = ser.read(256)
-    if len(data) >= 6 and data[0] == 0xAA and data[3] == 0xA1:
-        count = data[4]
-        ids = list(data[5:5+count])
-        print(f"  Found {count} device(s): {[hex(i) for i in ids]}")
+    resp = read_packet(ser, 0xA1, timeout=0.5)
+    if resp and resp["cmd"] == 0xA1:
+        ids = list(resp["data"])
+        print(f"  Found {len(ids)} device(s): {[hex(i) for i in ids]}")
+    elif resp:
+        print(f"  Device error: {error_text(resp)}")
     else:
-        print(f"  No response (got: {data.hex() if data else 'nothing'})")
+        print("  No response")
 
 def test_uart_ring(ser):
     print("UART Ring Test: sending to device 0x02 (expect echo back)...")
     send_packet(ser, 0x02, 0x02, [0x00])
-    data = ser.read(64)
-    if len(data) > 0 and data[0] == 0xAA:
-        print(f"  PASS: received {len(data)} bytes back via ring: {data.hex()}")
+    resp = read_packet(ser, 0x82, timeout=0.5)
+    if resp and resp["cmd"] == 0x82:
+        print(f"  PASS: sensor data from 0x{resp['source']:02X} via ring (TTL left {resp['ttl']})")
+    elif resp:
+        print(f"  FAIL: {error_text(resp)}")
     else:
-        print(f"  FAIL: no response (got {data.hex() if data else 'nothing'})")
+        print("  FAIL: no response")
 
 def run_detailed_test(port):
     try:

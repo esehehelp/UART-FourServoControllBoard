@@ -7,6 +7,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import medfilt
+from protocol_utils import build_packet, read_packet, RESP_SENSOR_DATA
 
 # --- Kalman Filter Class ---
 class KalmanFilter:
@@ -24,22 +25,6 @@ class KalmanFilter:
         self.x = self.x + k * (measurement - self.x)
         self.p = (1 - k) * self.p
         return self.x
-
-# --- Protocol Helpers ---
-def crc8(data):
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80: crc = (crc << 1) ^ 0x07
-            else: crc <<= 1
-            crc &= 0xFF
-    return crc
-
-def build_packet(target_id, source_id, cmd, data):
-    pkt = bytearray([0xAA, target_id, source_id, cmd, len(data)]) + bytearray(data)
-    pkt.append(crc8(pkt))
-    return pkt
 
 def calculate_temp(raw_adc):
     if raw_adc == 0 or raw_adc >= 4095: return 0.0
@@ -100,23 +85,22 @@ def main():
             pkt = build_packet(0x01, 0x00, 0x02, [0x00])
             with ser_lock: ser.write(pkt)
             
-            resp = ser.read(13)
-            if len(resp) == 13 and resp[0] == 0xAA and resp[3] == 0x82:
-                if crc8(resp[:-1]) == resp[-1]:
-                    ts = time.perf_counter() - start_time
-                    data = resp[5:-1]
-                    v_raw = (data[1] << 8) | data[2]
-                    t_raw = (data[3] << 8) | data[4]
-                    c_raw = (data[5] << 8) | data[6]
+            resp = read_packet(ser, RESP_SENSOR_DATA, timeout=0.1)
+            if resp and resp["cmd"] == RESP_SENSOR_DATA:
+                ts = time.perf_counter() - start_time
+                data = resp["data"]
+                v_raw = (data[1] << 8) | data[2]
+                t_raw = (data[3] << 8) | data[4]
+                c_raw = (data[5] << 8) | data[6]
                     
-                    voltage = (v_raw / 4095.0) * 3.3 * 6.1
-                    temp_c = calculate_temp(t_raw)
-                    current_ma = (c_raw / 4095.0) * 3.3 / (32.0 * 0.01) * 1000.0
+                voltage = (v_raw / 4095.0) * 3.3 * 6.1
+                temp_c = calculate_temp(t_raw)
+                current_ma = (c_raw / 4095.0) * 3.3 / (32.0 * 0.01) * 1000.0
                     
-                    times.append(ts)
-                    volts.append(voltage)
-                    temps.append(temp_c)
-                    currents.append(current_ma)
+                times.append(ts)
+                volts.append(voltage)
+                temps.append(temp_c)
+                currents.append(current_ma)
 
         running = False
         t.join(timeout=0.5)

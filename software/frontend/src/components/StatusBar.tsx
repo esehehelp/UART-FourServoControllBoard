@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { EventsOn, EventsOff } from '../wails'
-import type { SensorDataEvent, StatusEvent } from '../types'
+import type { DeviceErrorEvent, SensorDataEvent, StatusEvent } from '../types'
 
 const DOT_COLORS: Record<string, string> = {
   green: '#66bb6a',
@@ -12,11 +12,21 @@ const DOT_COLORS: Record<string, string> = {
 export default function StatusBar() {
   const [status, setStatus] = useState<StatusEvent>({ msg: 'Disconnected', color: 'gray' })
   const [sensor, setSensor] = useState<SensorDataEvent | null>(null)
+  const [devError, setDevError] = useState<string | null>(null)
 
   useEffect(() => {
+    let clearTimer: ReturnType<typeof setTimeout> | undefined
     EventsOn('status', (data: unknown) => setStatus(data as StatusEvent))
     EventsOn('sensor-data', (data: unknown) => setSensor(data as SensorDataEvent))
-    return () => { EventsOff('status', 'sensor-data') }
+    EventsOn('device-error', (data: unknown) => {
+      setDevError((data as DeviceErrorEvent).msg)
+      clearTimeout(clearTimer)
+      clearTimer = setTimeout(() => setDevError(null), 5000)
+    })
+    return () => {
+      clearTimeout(clearTimer)
+      EventsOff('status', 'sensor-data', 'device-error')
+    }
   }, [])
 
   const dot = DOT_COLORS[status.color] ?? '#888'
@@ -27,6 +37,11 @@ export default function StatusBar() {
         <span className="status-dot" style={{ background: dot }} />
         <span>{status.msg}</span>
       </div>
+      {devError && (
+        <div className="status-item" style={{ color: DOT_COLORS.red }}>
+          {devError}
+        </div>
+      )}
       {sensor && !sensor.valid && (
         <div className="status-item" style={{ color: 'var(--text-dim)' }}>
           No sensor data

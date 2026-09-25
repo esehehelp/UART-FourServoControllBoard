@@ -56,8 +56,16 @@ if bytes[1] != 0x01 {
 t.Errorf("Target = 0x%02x, want 0x01", bytes[1])
 }
 
-if bytes[3] != 0x30 {
-t.Errorf("Cmd = 0x%02x, want 0x30", bytes[3])
+if bytes[3] != 16 {
+t.Errorf("TTL = %d, want 16 (default)", bytes[3])
+}
+
+if bytes[4] != 0x30 {
+t.Errorf("Cmd = 0x%02x, want 0x30", bytes[4])
+}
+
+if bytes[5] != 2 || len(bytes) != 7+2 {
+t.Errorf("Len = %d / total %d, want 2 / 9", bytes[5], len(bytes))
 }
 }
 
@@ -153,5 +161,18 @@ t.Errorf("Data[%d] = 0x%02x, want 0x%02x", i, pkt2.Data[i], b)
 }
 }
 })
+}
+}
+
+// TestPacketTTLRoundtrip checks the TTL byte survives Marshal/Unmarshal
+func TestPacketTTLRoundtrip(t *testing.T) {
+pkt := serial.NewPacket(0x02, 0x02, []uint8{0})
+pkt.TTL = 3
+got, err := serial.Unmarshal(pkt.Marshal())
+if err != nil {
+t.Fatalf("Unmarshal() error = %v", err)
+}
+if got.TTL != 3 || got.Target != 0x02 || got.Cmd != 0x02 {
+t.Errorf("got %v, want TTL 3 target 0x02 cmd 0x02", got)
 }
 }

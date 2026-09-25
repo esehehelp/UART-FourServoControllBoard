@@ -21,7 +21,10 @@ void App_Trigger_Discovery(void) {
     g_device_count = 0;
     g_discovery_active = 1;
     g_discovery_start_ms = g_ms_ticks;
-    // Broadcast Ping into ring via UART2
+    // Broadcast Ping into the ring via UART2 (downstream) only (#14, fixed on
+    // the safe side): sending it on UART4 as well would reach the ring from
+    // both directions and duplicate replies, and USB is the PC, not a ring
+    // node. Broadcasts are executed but never forwarded, so this cannot loop.
     Send_Packet(IF_UART2, BROADCAST_ID, g_config.device_id, 0xA0, NULL, 0);
 }
 

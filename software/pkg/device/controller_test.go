@@ -90,3 +90,67 @@ func TestSensorTimeout(t *testing.T) {
 		t.Errorf("voltage after reconnect = %.3f, want ≈%.3f (filter reset)", got, want)
 	}
 }
+
+// ackTestController answers every sent packet with reply (if non-nil)
+// through processPacket, like the processor goroutine would.
+func ackTestController(reply func(req *serial.Packet) *serial.Packet) *Controller {
+	c := newTestController()
+	c.sendFn = func(req *serial.Packet) error {
+		if r := reply(req); r != nil {
+			go c.processPacket(r, time.Now())
+		}
+		return nil
+	}
+	return c
+}
+
+func TestSetPDVoltageAck(t *testing.T) {
+	c := ackTestController(func(req *serial.Packet) *serial.Packet {
+		return serial.NewPacket(config.HOST_ID, config.RESP_PD_ACK, req.Data)
+	})
+	if err := c.SetPDVoltage(9000); err != nil {
+		t.Fatalf("SetPDVoltage(9000) = %v, want nil", err)
+	}
+}
+
+func TestSetPDVoltageLimit(t *testing.T) {
+	sent := false
+	c := ackTestController(func(*serial.Packet) *serial.Packet { sent = true; return nil })
+	for _, mv := range []uint16{4000, 15000, 20000} {
+		if err := c.SetPDVoltage(mv); err == nil {
+			t.Errorf("SetPDVoltage(%d) = nil, want error", mv)
+		}
+	}
+	if sent {
+		t.Error("out-of-range voltage must not be sent to the device")
+	}
+}
+
+func TestCalSaveDeviceError(t *testing.T) {
+	c := ackTestController(func(req *serial.Packet) *serial.Packet {
+		return serial.NewPacket(config.HOST_ID, config.RESP_ERROR, []uint8{req.Cmd, config.ErrCodeFlashWrite})
+	})
+	err := c.RequestCalibrationSave(make([]uint8, config.CAL_DATA_LEN))
+	devErr, ok := err.(*DeviceError)
+	if !ok || devErr.Code != config.ErrCodeFlashWrite || devErr.Cmd != config.CMD_CAL_SAVE {
+		t.Fatalf("RequestCalibrationSave() = %v, want DeviceError flash write on 0x07", err)
+	}
+}
+
+func TestAckTimeout(t *testing.T) {
+	c := ackTestController(func(*serial.Packet) *serial.Packet { return nil })
+	if err := c.RequestCalibrationSave(make([]uint8, config.CAL_DATA_LEN)); err == nil {
+		t.Fatal("expected timeout error without a response")
+	}
+}
+
+func TestUnsolicitedErrorHandler(t *testing.T) {
+	c := newTestController()
+	var got *DeviceError
+	c.SetErrorHandler(func(e *DeviceError) { got = e })
+	c.processPacket(serial.NewPacket(config.HOST_ID, config.RESP_ERROR,
+		[]uint8{config.CMD_SERVO_WRITE, config.ErrCodeBadValue}), time.Now())
+	if got == nil || got.Cmd != config.CMD_SERVO_WRITE || got.Code != config.ErrCodeBadValue {
+		t.Fatalf("error handler got %v", got)
+	}
+}

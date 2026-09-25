@@ -3,6 +3,12 @@
 
 #include "ch32x035.h"
 
+/* Firmware version (#39). Major.Minor follow the hardware revision (V0.8);
+ * compatibility between HW / FW / SW is recorded in PRs and release notes. */
+#define FW_VERSION_MAJOR   0
+#define FW_VERSION_MINOR   8
+#define FW_VERSION_PATCH   0
+
 #define CONFIG_FLASH_ADDR  0x0800F000 // Last 4KB of Flash for settings
 #define CONFIG_MAGIC       0x43414C43 // "CALC"
 

@@ -3,37 +3,21 @@ import time
 import sys
 import struct
 import numpy as np
-
-# --- Protocol Helpers ---
-def crc8(data):
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80: crc = (crc << 1) ^ 0x07
-            else: crc <<= 1
-            crc &= 0xFF
-    return crc
-
-def build_packet(target_id, source_id, cmd, data):
-    pkt = bytearray([0xAA, target_id, source_id, cmd, len(data)]) + bytearray(data)
-    pkt.append(crc8(pkt))
-    return pkt
+from protocol_utils import build_packet, read_packet, RESP_SENSOR_DATA, RESP_CAL_ACK, RESP_ERROR, error_text
 
 def get_sensor_data(ser, target_id=0x01):
     pkt = build_packet(target_id, 0x00, 0x02, [0x00])
     ser.write(pkt)
-    resp = ser.read(21)
-    if len(resp) == 21 and resp[0] == 0xAA and resp[3] == 0x82:
-        if crc8(resp[:-1]) == resp[-1]:
-            data = resp[5:20]
-            v_mv = (data[1] << 8) | data[2]
-            i_ma = ((data[5] << 8) | data[6]) * 2.518
-            fb = []
-            for i in range(4):
-                val = (data[7 + i*2] << 8) | data[8 + i*2]
-                fb.append(val)
-            return v_mv, i_ma, fb
+    resp = read_packet(ser, RESP_SENSOR_DATA)
+    if resp and resp["cmd"] == RESP_SENSOR_DATA and len(resp["data"]) >= 15:
+        data = resp["data"]
+        v_mv = (data[1] << 8) | data[2]
+        i_ma = ((data[5] << 8) | data[6]) * 2.518
+        fb = []
+        for i in range(4):
+            val = (data[7 + i*2] << 8) | data[8 + i*2]
+            fb.append(val)
+        return v_mv, i_ma, fb
     return None, None, None
 
 def set_calibration(ser, ch, slope, intercept, min_p, max_p, target_id=0x01):
@@ -44,7 +28,11 @@ def set_calibration(ser, ch, slope, intercept, min_p, max_p, target_id=0x01):
     data += bytearray([(max_p >> 8) & 0xFF, max_p & 0xFF])
     pkt = build_packet(target_id, 0x00, 0x07, data)
     ser.write(pkt)
-    time.sleep(0.1)
+    resp = read_packet(ser, RESP_CAL_ACK)
+    if resp is None:
+        print(f"  CH{ch}: no ACK for calibration save")
+    elif resp["cmd"] == RESP_ERROR:
+        print(f"  CH{ch}: calibration save failed: {error_text(resp)}")
 
 def high_precision_sample(ser, ch, target_id, count=100):
     """Samples ADC many times and uses robust filtering."""

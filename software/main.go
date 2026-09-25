@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 
+	"uart-servo-controller/config"
+
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -15,7 +17,7 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:  "Servo Controller",
+		Title:  "Servo Controller V" + config.SOFTWARE_VERSION + " (HW " + config.HARDWARE_REVISION + ")",
 		Width:  1200,
 		Height: 800,
 		AssetServer: &assetserver.Options{

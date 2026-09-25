@@ -1,21 +1,7 @@
 import serial
 import sys
 import time
-
-def crc8(data):
-    crc = 0
-    for byte in data:
-        crc ^= byte
-        for _ in range(8):
-            if crc & 0x80: crc = (crc << 1) ^ 0x07
-            else: crc <<= 1
-            crc &= 0xFF
-    return crc
-
-def build_packet(target_id, source_id, cmd, data):
-    pkt = bytearray([0xAA, target_id, source_id, cmd, len(data)]) + bytearray(data)
-    pkt.append(crc8(pkt))
-    return pkt
+from protocol_utils import build_packet
 
 def sweep_led(ser, ch, label):
     print(f"{label} sweep:")

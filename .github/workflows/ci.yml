@@ -25,6 +25,11 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test -v -count=1 ./pkg/... ./test/...
+      - name: Uploader vet + tests
+        working-directory: uploader
+        run: |
+          go vet ./...
+          go test -v -count=1 ./...
 
   firmware-build:
     name: Firmware compile check
@@ -48,6 +53,21 @@ jobs:
         run: pio pkg install --platform "https://github.com/Community-PIO-CH32V/platform-ch32v"
       - name: Compile firmware
         run: pio run --environment genericCH32X035F7P6
+
+  host-tests:
+    name: Firmware host tests + protocol utils
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Firmware logic tests (x86, stubbed hardware)
+        run: make -C firmware/test/host test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Python protocol_utils tests
+        run: |
+          pip install pytest
+          python -m pytest -q firmware/test/test_protocol_utils.py
 
   ts-typecheck:
     name: TypeScript type check
