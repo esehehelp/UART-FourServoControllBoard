@@ -12,6 +12,7 @@
 package calibration
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math"
 	"sync"
@@ -244,12 +245,15 @@ func (sm *StateMachine) sampleFB(ch uint8) float64 {
 }
 
 // saveCalibration packs the result and sends CMD_CAL_SAVE to the device.
-// Wire format: ch(1) + slope(4, IEEE-754 BE float32) + intercept(4) + min(2) + max(2) = 13 bytes
+// Wire format: ch(1) + slope(4, IEEE-754 LE float32) + intercept(4, LE float32)
+// + min(2, BE) + max(2, BE) = 13 bytes.
+// The floats are little-endian because the firmware memcpy()s them straight
+// into float fields on the little-endian RISC-V MCU (see PROTOCOL.md 0x07).
 func (sm *StateMachine) saveCalibration() error {
 	data := make([]uint8, config.CAL_DATA_LEN)
 	data[0] = sm.channel
-	packFloat32BE(data[1:5], sm.result.Slope)
-	packFloat32BE(data[5:9], sm.result.Intercept)
+	packFloat32LE(data[1:5], sm.result.Slope)
+	packFloat32LE(data[5:9], sm.result.Intercept)
 	data[9] = uint8(sm.result.MinPulse >> 8)
 	data[10] = uint8(sm.result.MinPulse & 0xFF)
 	data[11] = uint8(sm.result.MaxPulse >> 8)
@@ -257,13 +261,9 @@ func (sm *StateMachine) saveCalibration() error {
 	return sm.ctrl.RequestCalibrationSave(data)
 }
 
-// packFloat32BE writes f as 4-byte IEEE-754 big-endian into dst.
-func packFloat32BE(dst []uint8, f float32) {
-	b := math.Float32bits(f)
-	dst[0] = uint8(b >> 24)
-	dst[1] = uint8(b >> 16)
-	dst[2] = uint8(b >> 8)
-	dst[3] = uint8(b)
+// packFloat32LE writes f as 4-byte IEEE-754 little-endian into dst.
+func packFloat32LE(dst []uint8, f float32) {
+	binary.LittleEndian.PutUint32(dst, math.Float32bits(f))
 }
 
 // waitConfirm blocks until the user calls Confirm() or calibration is cancelled.
