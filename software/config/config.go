@@ -97,16 +97,24 @@ const (
 
 // Sensor data parsing
 const (
-	// Circuit constants come from firmware/docs/constants.txt.
+	// Circuit constants come from firmware/docs/constants.md.
 
 	// Voltage [V]: (d[1]<<8|d[2]) * 0.00491
-	// = 3.3 V / 4095 * 6.1 (divider R1=5.1k, R2=1.0k)
+	// = 3.3 V / 4095 * 6.1 (divider R7=5.1k, R8=1.0k)
 	VOLTAGE_SCALE = 0.00491
 	// Current [mA]: (d[5]<<8|d[6]) * 2.518
 	// = 3.3 V / 4095 / 32 (OPA2 PGA x32) / 0.01 Ω (10 mΩ shunt) * 1000
 	CURRENT_SCALE = 2.518
-	// Feedback: (d[7+j*2]<<8|d[8+j*2]) * 3.3/4095/0.55
-	FB_VOLTAGE_SCALE = 3.3 / 4095.0 / 0.55
+	// Servo FB divider. Most RC servos have no FB output, so the divider is
+	// added outside the board by the builder (J3 pins go straight to the MCU;
+	// no divider on the PCB). Values depend on the build — see
+	// firmware/docs/constants.md "サーボ FB 分圧".
+	// This build: pot output -> V_FB_R1 -> FB pin -> V_FB_R2 -> GND
+	V_FB_R1 = 2700.0 // [Ω] pot side
+	V_FB_R2 = 3300.0 // [Ω] GND side
+	// Feedback [V at the pot]: (d[7+j*2]<<8|d[8+j*2]) * 3.3/4095 / ratio
+	// ratio = V_FB_R2 / (V_FB_R1 + V_FB_R2) = 0.55
+	FB_VOLTAGE_SCALE = (3.3 / 4095.0) / (V_FB_R2 / (V_FB_R1 + V_FB_R2))
 	// Temperature from NTC (22k, B=4050) on the low side of a 5.1k pull-up.
 	// TEMP_R0 is the NTC resistance at TEMP_T0 (B-parameter equation only);
 	// TEMP_SERIES_R is the pull-up used for the divider calculation.
