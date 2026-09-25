@@ -142,11 +142,14 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
         case 0x07: // Set Calibration (13 bytes: CH, Slope, Intercept, Min, Max)
             if (len >= 13) {
                 uint8_t ch = data[0];
-                if (ch < 4) {
+                uint16_t min_pulse = (data[9] << 8) | data[10];
+                uint16_t max_pulse = (data[11] << 8) | data[12];
+                // min >= max would make Set_Servo() clamp in reverse
+                if (ch < 4 && min_pulse < max_pulse) {
                     memcpy(&g_config.cal[ch].slope, &data[1], 4);
                     memcpy(&g_config.cal[ch].intercept, &data[5], 4);
-                    g_config.cal[ch].min_pulse = (data[9] << 8) | data[10];
-                    g_config.cal[ch].max_pulse = (data[11] << 8) | data[12];
+                    g_config.cal[ch].min_pulse = min_pulse;
+                    g_config.cal[ch].max_pulse = max_pulse;
                     Config_Save();
                 }
             }
