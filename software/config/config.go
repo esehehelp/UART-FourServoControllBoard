@@ -7,6 +7,10 @@ const (
 	BROADCAST_ID  = 0xFF
 	DEFAULT_BAUD  = 115200
 	TIMEOUT_MS    = 100
+	// MAX_PACKET_LEN is the firmware parser buffer size (Parser_t.buf[128]).
+	// A packet is 6 bytes of framing + data, so data is limited to 122 bytes.
+	MAX_PACKET_LEN = 128
+	MAX_DATA_LEN   = MAX_PACKET_LEN - 6
 )
 
 // USB_VID_WCH is the USB vendor ID of the board (CH32X035, firmware

@@ -32,7 +32,8 @@ uint8_t crc8(const uint8_t *data, size_t len) {
 }
 
 void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd, uint8_t *data, uint8_t len) {
-    uint8_t pkt[128];
+    uint8_t pkt[PKT_MAX_LEN];
+    if (len > PKT_MAX_DATA_LEN) return; // would overflow pkt[]
     pkt[0] = PKT_HEADER;
     pkt[1] = target;
     pkt[2] = source;
@@ -194,7 +195,7 @@ void Execute_Command(Interface_t source_iface, uint8_t target, uint8_t source, u
 
 void Process_Byte(Interface_t iface, uint8_t b) {
     Parser_t *p = &g_parsers[iface];
-    if (p->len >= 128) {
+    if (p->len >= PKT_MAX_LEN) {
         p->len = 0;
         p->state = STATE_HEADER;
     }
@@ -218,6 +219,12 @@ void Process_Byte(Interface_t iface, uint8_t b) {
             p->state = STATE_LEN;
             break;
         case STATE_LEN:
+            if (b > PKT_MAX_DATA_LEN) {
+                // Cannot fit in buf[]: drop the packet and resync on next header
+                p->state = STATE_HEADER;
+                p->len = 0;
+                break;
+            }
             p->expected_len = b;
             p->data_idx = 0;
             if (p->expected_len == 0) p->state = STATE_CRC;

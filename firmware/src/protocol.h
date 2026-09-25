@@ -8,6 +8,11 @@
 #define BROADCAST_ID 0xFF
 #define PKT_HEADER   0xAA
 
+/* Parser/transmit buffer size. Framing is 6 bytes (header, target, source,
+ * cmd, len, crc), so the data part is limited to PKT_MAX_LEN - 6 bytes. */
+#define PKT_MAX_LEN       128
+#define PKT_MAX_DATA_LEN  (PKT_MAX_LEN - 6)
+
 typedef enum {
     IF_USB,
     IF_UART2,
@@ -27,7 +32,7 @@ typedef enum {
 
 typedef struct {
     State_t state;
-    uint8_t buf[128];
+    uint8_t buf[PKT_MAX_LEN];
     uint8_t len;
     uint8_t data_idx;
     uint8_t target_id;

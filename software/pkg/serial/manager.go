@@ -168,6 +168,9 @@ func (m *Manager) Send(pkt *Packet) error {
 	if m.port == nil {
 		return fmt.Errorf("serial port not connected")
 	}
+	if len(pkt.Data) > config.MAX_DATA_LEN {
+		return fmt.Errorf("packet data too long: %d bytes (max %d)", len(pkt.Data), config.MAX_DATA_LEN)
+	}
 
 	data := pkt.Marshal()
 	_, err := m.port.Write(data)
