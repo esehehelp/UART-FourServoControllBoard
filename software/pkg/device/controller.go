@@ -222,8 +222,9 @@ func calcTemperature(rawTemp uint16) float64 {
 		return 0
 	}
 
-	// R = R0 * (4095 - T) / T
-	res := config.TEMP_R0 * float64(4095-rawTemp) / float64(rawTemp)
+	// Divider: Vout/Vref = R_ntc / (R_series + R_ntc)
+	// => R_ntc = R_series * raw / (4095 - raw)
+	res := config.TEMP_SERIES_R * float64(rawTemp) / float64(4095-rawTemp)
 
 	// T = 1 / (ln(R/R0)/B + 1/T0) - 273.15
 	logRatio := math.Log(res / config.TEMP_R0)
