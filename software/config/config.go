@@ -13,6 +13,13 @@ const (
 	MAX_DATA_LEN   = MAX_PACKET_LEN - 6
 )
 
+// Software version (#39). Major.Minor follow the hardware revision (V0.8);
+// HW / FW / SW compatibility is recorded in PRs and release notes.
+const (
+	SOFTWARE_VERSION  = "0.8.0"
+	HARDWARE_REVISION = "V0.8"
+)
+
 // USB_VID_WCH is the USB vendor ID of the board (CH32X035, firmware
 // lib/Drivers/inc/usb_desc.h DEF_USB_VID). Used to try the board's port first.
 const USB_VID_WCH = "1A86"
