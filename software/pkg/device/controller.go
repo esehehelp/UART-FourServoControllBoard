@@ -103,10 +103,9 @@ func (c *Controller) SetServo(ch uint8, microseconds uint16) error {
 	return c.sm.Send(pkt)
 }
 
-// SetLED sends LED control command with the duty (0-255) of LED1 and LED2.
-// Both bytes are always sent; the firmware only updates LED2 when len >= 2.
-func (c *Controller) SetLED(duty1, duty2 uint8) error {
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_LED_SET, []uint8{duty1, duty2})
+// SetLED sends LED control command (ch: 0=LED1, 1=LED2; duty: 0-255)
+func (c *Controller) SetLED(ch, duty uint8) error {
+	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_LED_SET, []uint8{ch, duty})
 	return c.sm.Send(pkt)
 }
 

@@ -90,8 +90,8 @@ python test/dlm_upload.py <PORT> .pio/build/genericCH32X035F7P6/firmware.bin
 
 ```bash
 cd software
-make build-linux        # -> bin/servo-controller (Wails CLI が必要)
-make test               # Go ユニットテスト
+~/go/bin/wails build    # -> build/bin/servo-controller (Wails CLI が必要)
+go test ./pkg/... ./test/...   # Go ユニットテスト
 ```
 
 ## 設計データ (Design Data)

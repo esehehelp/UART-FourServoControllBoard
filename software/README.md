@@ -11,7 +11,7 @@ UART-FSCB を USB 経由で操作・監視する PC 用 GUI。バックエンド
   - 電圧・電流は Kalman フィルタで平滑化
   - 2 秒間応答がないとデータを無効扱いにし、ステータスバーに "No sensor data" を表示
 - **サーボ制御** (`0x01`): 4ch スライダー、500–2500 µs (ファームウェアのデフォルト範囲)
-- **LED 制御** (`0x05`): LED1 / LED2 それぞれ 0–255
+- **LED 制御** (`0x30`): LED1 / LED2 それぞれ 0–255
 - **USB-PD 電圧** (`0x06`): 5 / 9 / 15 / 20 V プリセット + 任意電圧 (mV)
 - **位置キャリブレーション** (`0x07`)
   1. サーボをセンター (1500 µs) へ移動
@@ -36,13 +36,10 @@ UART-FSCB を USB 経由で操作・監視する PC 用 GUI。バックエンド
 ```bash
 cd software
 
-make build-linux     # -> bin/servo-controller
-make build-win       # -> bin/servo-controller.exe
-make dev             # ホットリロード付き開発サーバ (wails dev)
-make test            # Go ユニットテスト
-make clean
-
-./build.sh [linux|windows|all|test|dev|clean]   # 同等のスクリプト
+~/go/bin/wails build                          # -> build/bin/servo-controller
+~/go/bin/wails build -platform windows/amd64  # Windows 向け
+~/go/bin/wails dev                            # ホットリロード付き開発サーバ
+go test ./pkg/... ./test/...                  # Go ユニットテスト
 ```
 
 ## プロジェクト構成

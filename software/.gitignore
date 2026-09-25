@@ -1,6 +1,9 @@
-# Build artifacts
-bin/
-dist/
+# Wails build output
+build/bin/
+
+# Frontend build output
+frontend/dist/
+frontend/node_modules/
 
 # Go build cache
 /.cache
@@ -16,6 +19,8 @@ dist/
 *.so
 *.so.*
 *.dylib
+uart-servo-controller
+servo-controller
 
 # Test binary, built with `go test -c`
 *.test
@@ -36,18 +41,6 @@ go.work
 *.swo
 *~
 .DS_Store
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-dist/
-build/
-.Python
-.venv/
-env/
-venv/
 
 # Temporary files
 *.tmp

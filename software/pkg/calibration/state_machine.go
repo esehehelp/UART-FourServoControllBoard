@@ -12,7 +12,6 @@
 package calibration
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"sync"
@@ -295,10 +294,7 @@ func checkFBRaw(raw uint16) error {
 }
 
 // saveCalibration packs the result and sends CMD_CAL_SAVE to the device.
-// Wire format: ch(1) + slope(4, IEEE-754 LE float32) + intercept(4, LE float32)
-// + min(2, BE) + max(2, BE) = 13 bytes.
-// The floats are little-endian because the firmware memcpy()s them straight
-// into float fields on the little-endian RISC-V MCU (see PROTOCOL.md 0x07).
+// Wire format: ch(1) + slope(4, IEEE-754 LE float32) + intercept(4) + min(2, BE) + max(2, BE) = 13 bytes
 func (sm *StateMachine) saveCalibration() error {
 	data := make([]uint8, config.CAL_DATA_LEN)
 	data[0] = sm.channel
@@ -312,8 +308,13 @@ func (sm *StateMachine) saveCalibration() error {
 }
 
 // packFloat32LE writes f as 4-byte IEEE-754 little-endian into dst.
+// CH32X035 is a little-endian RISC-V CPU; firmware reads floats via memcpy.
 func packFloat32LE(dst []uint8, f float32) {
-	binary.LittleEndian.PutUint32(dst, math.Float32bits(f))
+	b := math.Float32bits(f)
+	dst[0] = uint8(b)
+	dst[1] = uint8(b >> 8)
+	dst[2] = uint8(b >> 16)
+	dst[3] = uint8(b >> 24)
 }
 
 // waitConfirm blocks until the user calls Confirm() or calibration is cancelled.
