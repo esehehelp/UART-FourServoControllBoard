@@ -10,8 +10,9 @@ test: $(OUT)/test_protocol $(OUT)/test_config
 	$(OUT)/test_protocol
 	$(OUT)/test_config
 
-$(OUT)/test_protocol: test_protocol.c stubs.c $(SRC)/protocol.c | $(OUT)
-	$(CC) $(CFLAGS) -w -o $@ $^
+# protocol.c + the real config modules, with the flash page emulated in RAM
+$(OUT)/test_protocol: test_protocol.c stubs.c $(SRC)/protocol.c $(SRC)/config.c $(SRC)/config_cmd.c | $(OUT)
+	$(CC) $(CFLAGS) -w -include host_flash.h -DCONFIG_FLASH_PTR=host_flash -o $@ $^
 
 $(OUT)/test_config: test_config.c $(SRC)/config.c | $(OUT)
 	$(CC) $(CFLAGS) -w -o $@ $^

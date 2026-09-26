@@ -4,7 +4,6 @@
 #include "config.h"
 #include <stdio.h>
 #include <string.h>
-Config_t g_config;
 int led1=-1, led2=-1, config_saves=0, flash_ok=1; uint16_t servo_pos[4]; int pd_mv=-1;
 uint8_t tx[8][512]; int txn[8];
 void LED1_SetDuty(uint8_t d){ led1=d; }
@@ -16,8 +15,13 @@ volatile uint16_t g_servo_feedback[4];
 void USB_PD_Request_Voltage(uint16_t mv){ pd_mv=mv; }
 void App_Trigger_Discovery(void){}
 void App_On_Pong(uint8_t id){ (void)id; }
-void Config_Load(void){ memset(&g_config,0,sizeof g_config); g_config.device.device_id=1; for(int i=0;i<4;i++){g_config.servo[i].min_pulse=500;g_config.servo[i].max_pulse=2500;} }
-int Config_Save(void){ config_saves++; return flash_ok; }
+/* Flash emulation for config.c (built with -DCONFIG_FLASH_PTR=host_flash) */
+uint8_t host_flash[256];
+FLASH_Status FLASH_ROM_ERASE(uint32_t a, uint32_t l){ (void)a; memset(host_flash, 0xFF, l); return FLASH_COMPLETE; }
+FLASH_Status FLASH_ROM_WRITE(uint32_t a, uint32_t *p, uint32_t l){
+  (void)a; config_saves++;
+  if (!flash_ok) return FLASH_OP_RANGE_ERROR;
+  memcpy(host_flash, p, l); return FLASH_COMPLETE; }
 FlagStatus USART_GetFlagStatus(USART_TypeDef* u, uint16_t f){ (void)u;(void)f; return SET; }
 void USART_SendData(USART_TypeDef* u, uint16_t d){ int k = (u==USART2)?IF_UART2:IF_UART4; tx[k][txn[k]++]=(uint8_t)d; }
 uint8_t USBFS_Endp_DataUp(uint8_t e, uint8_t *b, uint16_t l, uint8_t m){ (void)e;(void)m; memcpy(tx[IF_USB]+txn[IF_USB],b,l); txn[IF_USB]+=l; return 0; }

@@ -23,7 +23,8 @@
 
 /* Response command codes */
 #define RESP_SENSOR_DATA  0x82
-#define RESP_CFG_ACK      0x84
+#define RESP_CFG_ACK      0x84 /* [tag, (ch)] for 0x04 / 0x20 */
+#define RESP_CFG_DATA     0x85 /* [tag, (ch), value...] for 0x21 */
 #define RESP_PD_ACK       0x86
 #define RESP_CAL_ACK      0x87
 #define RESP_CAL_DATA     0x88

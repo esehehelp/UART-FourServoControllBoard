@@ -2,10 +2,11 @@
  * error responses and ACKs). Build and run: make -C firmware/test/host */
 #include "protocol.h"
 #include "error_codes.h"
+#include "config.h"
 #include <stdio.h>
 #include <string.h>
 extern int led1, led2, config_saves, flash_ok, pd_mv; extern uint16_t servo_pos[4];
-extern uint8_t tx[8][512]; extern int txn[8];
+extern uint8_t tx[8][512]; extern int txn[8]; extern unsigned char host_flash[256];
 static int fails=0;
 #define CHECK(c) do{ if(!(c)){ printf("FAIL line %d: %s\n", __LINE__, #c); fails++; } }while(0)
 static void reset_tx(void){ memset(txn,0,sizeof txn); }
@@ -67,4 +68,48 @@ int main(void){
   /* oversize length dropped, parser resyncs */
   uint8_t big[200]={0}; reset_tx(); n=build(pkt,1,16,0x30,big,PKT_MAX_DATA_LEN+1); feed(IF_USB,pkt,n);
   led[0]=0; led[1]=77; n=build(pkt,1,16,0x30,led,2); feed(IF_USB,pkt,n); CHECK(led1==77);
+  /* ---- #49 config write/read (0x20 / 0x21 / legacy 0x04) ---- */
+  { uint8_t w[20]; int saves;
+    /* name write + read back */
+    w[0]=0x03; memcpy(w+1,"ArmLeft",7); reset_tx(); n=build(pkt,1,16,0x20,w,8); feed(IF_USB,pkt,n);
+    CHECK(txn[IF_USB]==8 && tx[IF_USB][4]==0x84 && tx[IF_USB][6]==0x03);
+    CHECK(strcmp(g_config.device.name,"ArmLeft")==0);
+    CHECK(memcmp(host_flash, &g_config, sizeof g_config)==0); /* persisted */
+    reset_tx(); n=build(pkt,1,16,0x21,(uint8_t[]){0x03},1); feed(IF_USB,pkt,n);
+    CHECK(tx[IF_USB][4]==0x85 && tx[IF_USB][5]==8 && memcmp(tx[IF_USB]+7,"ArmLeft",7)==0);
+    /* servo default pulse CH2 = 1500, read back */
+    uint8_t dp[4]={0x10,2,0x05,0xDC}; reset_tx(); n=build(pkt,1,16,0x20,dp,4); feed(IF_USB,pkt,n);
+    CHECK(tx[IF_USB][4]==0x84 && tx[IF_USB][5]==2 && g_config.servo[2].default_pulse==1500);
+    reset_tx(); n=build(pkt,1,16,0x21,(uint8_t[]){0x10,2},2); feed(IF_USB,pkt,n);
+    CHECK(tx[IF_USB][4]==0x85 && tx[IF_USB][7]==2 && tx[IF_USB][8]==0x05 && tx[IF_USB][9]==0xDC);
+    /* default pulse outside range -> CONFIG_INVALID, unchanged */
+    dp[2]=0x0B; dp[3]=0xB8; reset_tx(); n=build(pkt,1,16,0x20,dp,4); feed(IF_USB,pkt,n);
+    CHECK(err_on(IF_USB,NULL)==ERR_CONFIG_INVALID && g_config.servo[2].default_pulse==1500);
+    /* min >= max -> CONFIG_INVALID */
+    uint8_t mn[4]={0x11,0,0x09,0xC4}; reset_tx(); n=build(pkt,1,16,0x20,mn,4); feed(IF_USB,pkt,n);
+    CHECK(err_on(IF_USB,NULL)==ERR_CONFIG_INVALID && g_config.servo[0].min_pulse==500);
+    /* bad channel, unknown tag, read-only tag, bad length */
+    dp[1]=5; reset_tx(); n=build(pkt,1,16,0x20,dp,4); feed(IF_USB,pkt,n); CHECK(err_on(IF_USB,NULL)==ERR_BAD_CHANNEL);
+    reset_tx(); n=build(pkt,1,16,0x20,(uint8_t[]){0x77,1},2); feed(IF_USB,pkt,n); CHECK(err_on(IF_USB,NULL)==ERR_BAD_VALUE);
+    reset_tx(); n=build(pkt,1,16,0x20,(uint8_t[]){0xF1,9},2); feed(IF_USB,pkt,n); CHECK(err_on(IF_USB,NULL)==ERR_BAD_VALUE);
+    reset_tx(); n=build(pkt,1,16,0x20,(uint8_t[]){0x31,1},2); feed(IF_USB,pkt,n); CHECK(err_on(IF_USB,NULL)==ERR_BAD_LENGTH);
+    /* protection threshold write */
+    reset_tx(); n=build(pkt,1,16,0x20,(uint8_t[]){0x31,0x0F,0xA0},3); feed(IF_USB,pkt,n);
+    CHECK(tx[IF_USB][4]==0x84 && g_config.prot.max_current_ma==4000);
+    /* unknown feature bits rejected */
+    reset_tx(); n=build(pkt,1,16,0x20,(uint8_t[]){0x30,0x80},2); feed(IF_USB,pkt,n); CHECK(err_on(IF_USB,NULL)==ERR_BAD_VALUE);
+    /* flash failure: RAM rolled back */
+    flash_ok=0; saves=config_saves;
+    reset_tx(); n=build(pkt,1,16,0x20,(uint8_t[]){0x31,0x03,0xE8},3); feed(IF_USB,pkt,n);
+    CHECK(err_on(IF_USB,NULL)==ERR_FLASH_WRITE && g_config.prot.max_current_ma==4000 && config_saves==saves+1);
+    flash_ok=1;
+    /* firmware version */
+    reset_tx(); n=build(pkt,1,16,0x21,(uint8_t[]){0xF0},1); feed(IF_USB,pkt,n);
+    CHECK(tx[IF_USB][4]==0x85 && tx[IF_USB][7]==FW_VERSION_MAJOR && tx[IF_USB][8]==FW_VERSION_MINOR && tx[IF_USB][9]==FW_VERSION_PATCH);
+    /* legacy 0x04: change device id -> ACK comes from the new id */
+    reset_tx(); n=build(pkt,1,16,0x04,(uint8_t[]){0x01,0x07},2); feed(IF_USB,pkt,n);
+    CHECK(tx[IF_USB][4]==0x84 && tx[IF_USB][2]==0x07 && g_config.device.device_id==7);
+    reset_tx(); n=build(pkt,7,16,0x04,(uint8_t[]){0x01,0x01},2); feed(IF_USB,pkt,n);
+    CHECK(g_config.device.device_id==1);
+  }
   printf(fails? "FAILED (%d)\n" : "ALL OK\n", fails); return fails!=0; }

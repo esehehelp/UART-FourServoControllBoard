@@ -8,6 +8,12 @@ Config_t g_config;
  * and length, so the config is written as one full 256-byte page. */
 #define CONFIG_FLASH_PAGE  256
 
+/* Where the stored image is read from. Host-side tests point this at a RAM
+ * buffer that their FLASH_ROM_* stubs write to. */
+#ifndef CONFIG_FLASH_PTR
+#define CONFIG_FLASH_PTR ((const void *)CONFIG_FLASH_ADDR)
+#endif
+
 typedef char config_fits_in_page[(sizeof(Config_t) <= CONFIG_FLASH_PAGE) ? 1 : -1];
 
 /* Version-1 layout (before #48), kept only to migrate existing boards */
@@ -120,9 +126,9 @@ int Config_LoadFrom(const void *src) {
 }
 
 void Config_Load(void) {
-    int ok = Config_LoadFrom((const void *)CONFIG_FLASH_ADDR);
+    int ok = Config_LoadFrom(CONFIG_FLASH_PTR);
     // Rewrite when defaults were loaded or a version-1 image was migrated
-    if (!ok || memcmp((const void *)CONFIG_FLASH_ADDR, &g_config, sizeof(Config_t)) != 0) {
+    if (!ok || memcmp(CONFIG_FLASH_PTR, &g_config, sizeof(Config_t)) != 0) {
         Config_Save();
     }
 }
@@ -139,5 +145,5 @@ int Config_Save(void) {
     if (FLASH_ROM_WRITE(CONFIG_FLASH_ADDR, page, CONFIG_FLASH_PAGE) != FLASH_COMPLETE) return 0;
 
     /* Read back to verify the write */
-    return memcmp((const void *)CONFIG_FLASH_ADDR, &g_config, sizeof(Config_t)) == 0;
+    return memcmp(CONFIG_FLASH_PTR, &g_config, sizeof(Config_t)) == 0;
 }

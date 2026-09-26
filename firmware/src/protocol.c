@@ -7,6 +7,7 @@
 #include "usb_pd.h"
 #include "config.h"
 #include "error_codes.h"
+#include "config_cmd.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -145,19 +146,23 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
                 Set_Servo(i, (data[i*2] << 8) | data[i*2+1]);
             }
             return ERR_OK;
-        case 0x04: // CfgWrite → ACK 0x84 [sub_cmd]
-            if (len < 2) return ERR_BAD_LENGTH;
-            if (data[0] == 0x01) { // Change device_id
-                if (data[1] == HOST_ID || data[1] == BROADCAST_ID) return ERR_BAD_VALUE;
-                g_config.device.device_id = data[1];
-            } else if (data[0] == 0x02) { // Change role
-                if (data[1] != ROLE_DEVICE && data[1] != ROLE_HOST) return ERR_BAD_VALUE;
-                g_config.device.role = data[1];
-            } else {
-                return ERR_BAD_VALUE;
+        case 0x04: // CfgWrite (legacy ID, same as 0x20; sub-commands 0x01/0x02 = tags)
+        case 0x20: // Config Write [tag, (ch), value...] → ACK 0x84 [tag, (ch)] (#49)
+            {
+                uint8_t ack[2], ack_len;
+                uint8_t err = ConfigCmd_Write(data, len, ack, &ack_len);
+                if (err != ERR_OK) return err;
+                // reply with the (possibly new) device ID as source
+                Send_Packet(source_iface, source, g_config.device.device_id, RESP_CFG_ACK, ack, ack_len);
             }
-            if (!Config_Save()) return ERR_FLASH_WRITE;
-            Send_Packet(source_iface, source, g_config.device.device_id, RESP_CFG_ACK, &data[0], 1);
+            return ERR_OK;
+        case 0x21: // Config Read [tag, (ch)] → 0x85 [tag, (ch), value...] (#49)
+            {
+                uint8_t out[24], out_len;
+                uint8_t err = ConfigCmd_Read(data, len, out, &out_len);
+                if (err != ERR_OK) return err;
+                Send_Packet(source_iface, source, g_config.device.device_id, RESP_CFG_DATA, out, out_len);
+            }
             return ERR_OK;
         case 0x30: // LED Set (ch, duty) — replaces 0x05, no ACK
             if (len < 2) return ERR_BAD_LENGTH;
