@@ -66,6 +66,11 @@ uint16_t Get_ADC_Val(uint8_t ch) {
 void Update_Servo_Feedback(void) {
     GPIO_InitTypeDef GPIO_InitStructure = {0};
 
+    // Keep interrupts (USB command handling calls Set_Servo) out while the
+    // PWM pins are switched to analog input (#12). ~60 us, shorter than one
+    // UART byte at 115200 bps (~87 us).
+    __disable_irq();
+
     // 1. Temporarily switch pins to AIN (Analog Input)
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AIN;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -93,4 +98,6 @@ void Update_Servo_Feedback(void) {
     
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
     GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+    __enable_irq();
 }
