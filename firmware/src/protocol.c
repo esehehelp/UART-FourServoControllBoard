@@ -8,6 +8,7 @@
 #include "config.h"
 #include "error_codes.h"
 #include "config_cmd.h"
+#include "protection.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -109,6 +110,7 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
         case 0x01: // Write (Single Servo) — no ACK (fire-and-forget)
             {
                 if (len < 3) return ERR_BAD_LENGTH;
+                if (Protection_Fault()) return Protection_Fault(); // #47: blocked while a fault persists
                 if (data[0] >= 4) return ERR_BAD_CHANNEL;
                 uint16_t pulse = (data[1] << 8) | data[2];
                 if (!Pulse_Valid(data[0], pulse)) return ERR_BAD_VALUE;
@@ -139,6 +141,7 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
             return ERR_OK;
         case 0x03: // SyncWrite (All 4 Servos) — no ACK
             if (len < 8) return ERR_BAD_LENGTH;
+            if (Protection_Fault()) return Protection_Fault();
             for (int i = 0; i < 4; i++) {
                 if (!Pulse_Valid(i, (data[i*2] << 8) | data[i*2+1])) return ERR_BAD_VALUE;
             }

@@ -6,9 +6,10 @@ CFLAGS := -std=gnu11 -Wall -Wno-unused-parameter -I$(SRC) -I../../lib/Drivers/in
 OUT    := build
 
 .PHONY: test clean
-test: $(OUT)/test_protocol $(OUT)/test_config
+test: $(OUT)/test_protocol $(OUT)/test_config $(OUT)/test_protection
 	$(OUT)/test_protocol
 	$(OUT)/test_config
+	$(OUT)/test_protection
 
 # protocol.c + the real config modules, with the flash page emulated in RAM
 $(OUT)/test_protocol: test_protocol.c stubs.c $(SRC)/protocol.c $(SRC)/config.c $(SRC)/config_cmd.c | $(OUT)
@@ -16,6 +17,9 @@ $(OUT)/test_protocol: test_protocol.c stubs.c $(SRC)/protocol.c $(SRC)/config.c 
 
 $(OUT)/test_config: test_config.c $(SRC)/config.c | $(OUT)
 	$(CC) $(CFLAGS) -w -o $@ $^
+
+$(OUT)/test_protection: test_protection.c $(SRC)/protection.c $(SRC)/config.c | $(OUT)
+	$(CC) $(CFLAGS) -w -DHOST_TEST -o $@ $^
 
 $(OUT):
 	mkdir -p $@

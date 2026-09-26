@@ -1,10 +1,13 @@
 #include "servo.h"
 #include "config.h"
 
+volatile uint16_t g_servo_target[4];
+
 void Set_Servo(uint8_t idx, uint16_t pos) {
     if (idx >= 4) return;
     if (pos < g_config.servo[idx].min_pulse) pos = g_config.servo[idx].min_pulse;
     if (pos > g_config.servo[idx].max_pulse) pos = g_config.servo[idx].max_pulse;
+    g_servo_target[idx] = pos;
     switch(idx) {
         case 0: TIM_SetCompare1(TIM2, pos); break;
         case 1: TIM_SetCompare2(TIM2, pos); break;
@@ -16,6 +19,9 @@ void Set_Servo(uint8_t idx, uint16_t pos) {
 // Servo_Free: set CCR to 0 so PWM1 output stays LOW entire period (servo goes limp).
 // PWM mode and CCxE are untouched. Call Set_Servo() to re-engage.
 void Servo_Free(uint8_t ch_mask) {
+    for (uint8_t ch = 0; ch < 4; ch++) {
+        if (ch_mask & (1u << ch)) g_servo_target[ch] = 0;
+    }
     if (ch_mask & 0x01) TIM_SetCompare1(TIM2, 0);
     if (ch_mask & 0x02) TIM_SetCompare2(TIM2, 0);
     if (ch_mask & 0x04) TIM_SetCompare4(TIM2, 0);

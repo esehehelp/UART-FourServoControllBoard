@@ -10,6 +10,7 @@
 #include "led.h"
 #include "usb_desc.h"
 #include "config.h"
+#include "protection.h"
 #include <stdio.h>
 
 volatile uint32_t g_ms_ticks = 0;
@@ -94,6 +95,8 @@ int main(void) {
             }
 
             App_Tick(now_ms);
+
+            Protection_Tick(now_ms); // #47 / #28 (every PROT_PERIOD_MS)
 
             if (g_dlm_requested) {
                 if (g_dlm_timer == 0) g_dlm_timer = 2000;

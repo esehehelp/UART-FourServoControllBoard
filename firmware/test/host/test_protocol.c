@@ -112,4 +112,10 @@ int main(void){
     reset_tx(); n=build(pkt,7,16,0x04,(uint8_t[]){0x01,0x01},2); feed(IF_USB,pkt,n);
     CHECK(g_config.device.device_id==1);
   }
+  /* ---- #47: servo commands blocked while a protection fault persists ---- */
+  { extern uint8_t prot_fault; uint8_t sv2[3]={0,0x05,0xDC};
+    prot_fault=ERR_OVERHEAT; servo_pos[0]=0; reset_tx(); n=build(pkt,1,16,0x01,sv2,3); feed(IF_USB,pkt,n);
+    CHECK(err_on(IF_USB,NULL)==ERR_OVERHEAT && servo_pos[0]==0);
+    prot_fault=0; reset_tx(); n=build(pkt,1,16,0x01,sv2,3); feed(IF_USB,pkt,n);
+    CHECK(txn[IF_USB]==0 && servo_pos[0]==1500); }
   printf(fails? "FAILED (%d)\n" : "ALL OK\n", fails); return fails!=0; }

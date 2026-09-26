@@ -25,3 +25,7 @@ FLASH_Status FLASH_ROM_WRITE(uint32_t a, uint32_t *p, uint32_t l){
 FlagStatus USART_GetFlagStatus(USART_TypeDef* u, uint16_t f){ (void)u;(void)f; return SET; }
 void USART_SendData(USART_TypeDef* u, uint16_t d){ int k = (u==USART2)?IF_UART2:IF_UART4; tx[k][txn[k]++]=(uint8_t)d; }
 uint8_t USBFS_Endp_DataUp(uint8_t e, uint8_t *b, uint16_t l, uint8_t m){ (void)e;(void)m; memcpy(tx[IF_USB]+txn[IF_USB],b,l); txn[IF_USB]+=l; return 0; }
+
+/* protection.c is tested separately (test_protection.c) */
+uint8_t prot_fault = 0;
+uint8_t Protection_Fault(void){ return prot_fault; }

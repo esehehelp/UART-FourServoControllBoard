@@ -29,6 +29,7 @@ typedef enum {
     ERR_UNDERVOLTAGE    = 0x31,
     ERR_OVERHEAT        = 0x32,
     ERR_STALL           = 0x33,
+    ERR_OVERVOLTAGE     = 0x34, /* #47: bus voltage above the configured maximum */
 
     /* 0x40-0x4F: configuration */
     ERR_CONFIG_INVALID  = 0x40,
