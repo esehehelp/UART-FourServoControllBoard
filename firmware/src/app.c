@@ -25,7 +25,7 @@ void App_Trigger_Discovery(void) {
     // the safe side): sending it on UART4 as well would reach the ring from
     // both directions and duplicate replies, and USB is the PC, not a ring
     // node. Broadcasts are executed but never forwarded, so this cannot loop.
-    Send_Packet(IF_UART2, BROADCAST_ID, g_config.device_id, 0xA0, NULL, 0);
+    Send_Packet(IF_UART2, BROADCAST_ID, g_config.device.device_id, 0xA0, NULL, 0);
 }
 
 void App_On_Pong(uint8_t device_id) {
@@ -39,7 +39,7 @@ void App_Tick(uint32_t ms) {
     if ((ms - g_discovery_start_ms) >= DISCOVERY_TIMEOUT_MS) {
         g_discovery_active = 0;
         // Send collected device list back to USB host
-        Send_Packet(IF_USB, HOST_ID, g_config.device_id, 0xA1,
+        Send_Packet(IF_USB, HOST_ID, g_config.device.device_id, 0xA1,
                     g_device_list, g_device_count);
     }
 }

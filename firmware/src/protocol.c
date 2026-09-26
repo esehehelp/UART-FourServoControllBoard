@@ -64,7 +64,7 @@ void Send_Packet(Interface_t iface, uint8_t target, uint8_t source, uint8_t cmd,
 
 void Send_Error(Interface_t iface, uint8_t target, uint8_t orig_cmd, uint8_t code) {
     uint8_t res[2] = { orig_cmd, code };
-    Send_Packet(iface, target, g_config.device_id, RESP_ERROR, res, 2);
+    Send_Packet(iface, target, g_config.device.device_id, RESP_ERROR, res, 2);
 }
 
 /* Interface a packet received on source_iface is forwarded to */
@@ -97,7 +97,7 @@ void Forward_Packet(Interface_t source_iface, uint8_t *pkt, uint8_t len) {
 /* Pulse must be inside the channel's calibrated range; Set_Servo() would
  * otherwise clamp it silently. */
 static int Pulse_Valid(uint8_t ch, uint16_t pulse) {
-    return pulse >= g_config.cal[ch].min_pulse && pulse <= g_config.cal[ch].max_pulse;
+    return pulse >= g_config.servo[ch].min_pulse && pulse <= g_config.servo[ch].max_pulse;
 }
 
 /* Returns ERR_OK, or the error code to report. Handlers that answer with data
@@ -128,12 +128,12 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
                 res[5] = c >> 8; res[6] = c & 0xFF;
                 // Servo Feedback - Now calculates Microseconds
                 for(int i=0; i<4; i++) {
-                    float pulse = (float)g_servo_feedback[i] * g_config.cal[i].slope + g_config.cal[i].intercept;
+                    float pulse = (float)g_servo_feedback[i] * g_config.servo[i].slope + g_config.servo[i].intercept;
                     uint16_t pulse16 = (uint16_t)pulse;
                     res[7 + i*2] = pulse16 >> 8;
                     res[8 + i*2] = pulse16 & 0xFF;
                 }
-                Send_Packet(source_iface, source, g_config.device_id, RESP_SENSOR_DATA, res, 15);
+                Send_Packet(source_iface, source, g_config.device.device_id, RESP_SENSOR_DATA, res, 15);
             }
             return ERR_OK;
         case 0x03: // SyncWrite (All 4 Servos) — no ACK
@@ -149,15 +149,15 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
             if (len < 2) return ERR_BAD_LENGTH;
             if (data[0] == 0x01) { // Change device_id
                 if (data[1] == HOST_ID || data[1] == BROADCAST_ID) return ERR_BAD_VALUE;
-                g_config.device_id = data[1];
+                g_config.device.device_id = data[1];
             } else if (data[0] == 0x02) { // Change role
                 if (data[1] != ROLE_DEVICE && data[1] != ROLE_HOST) return ERR_BAD_VALUE;
-                g_config.role = data[1];
+                g_config.device.role = data[1];
             } else {
                 return ERR_BAD_VALUE;
             }
             if (!Config_Save()) return ERR_FLASH_WRITE;
-            Send_Packet(source_iface, source, g_config.device_id, RESP_CFG_ACK, &data[0], 1);
+            Send_Packet(source_iface, source, g_config.device.device_id, RESP_CFG_ACK, &data[0], 1);
             return ERR_OK;
         case 0x30: // LED Set (ch, duty) — replaces 0x05, no ACK
             if (len < 2) return ERR_BAD_LENGTH;
@@ -171,7 +171,7 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
                 uint16_t mv = (data[0] << 8) | data[1];
                 if (mv < PD_MIN_MV || mv > PD_MAX_SAFE_MV) return ERR_BAD_VALUE; // #38
                 USB_PD_Request_Voltage(mv);
-                Send_Packet(source_iface, source, g_config.device_id, RESP_PD_ACK, data, 2);
+                Send_Packet(source_iface, source, g_config.device.device_id, RESP_PD_ACK, data, 2);
             }
             return ERR_OK;
         case 0x07: // Set Calibration (13 bytes: CH, Slope, Intercept, Min, Max) → ACK 0x87 [ch]
@@ -183,12 +183,18 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
                 uint16_t max_pulse = (data[11] << 8) | data[12];
                 // min >= max would make Set_Servo() clamp in reverse
                 if (min_pulse >= max_pulse) return ERR_CAL_INVALID;
-                memcpy(&g_config.cal[ch].slope, &data[1], 4);
-                memcpy(&g_config.cal[ch].intercept, &data[5], 4);
-                g_config.cal[ch].min_pulse = min_pulse;
-                g_config.cal[ch].max_pulse = max_pulse;
+                memcpy(&g_config.servo[ch].slope, &data[1], 4);
+                memcpy(&g_config.servo[ch].intercept, &data[5], 4);
+                g_config.servo[ch].min_pulse = min_pulse;
+                g_config.servo[ch].max_pulse = max_pulse;
+                g_config.servo[ch].calibrated = 1;
+                // keep the power-up pulse inside the new range
+                if (g_config.servo[ch].default_pulse != 0 &&
+                    (g_config.servo[ch].default_pulse < min_pulse || g_config.servo[ch].default_pulse > max_pulse)) {
+                    g_config.servo[ch].default_pulse = 0;
+                }
                 if (!Config_Save()) return ERR_FLASH_WRITE;
-                Send_Packet(source_iface, source, g_config.device_id, RESP_CAL_ACK, &ch, 1);
+                Send_Packet(source_iface, source, g_config.device.device_id, RESP_CAL_ACK, &ch, 1);
             }
             return ERR_OK;
         case 0x08: // Get Calibration (1 byte: CH) → 0x88
@@ -198,13 +204,13 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
                 if (ch >= 4) return ERR_BAD_CHANNEL;
                 uint8_t res[13];
                 res[0] = ch;
-                memcpy(&res[1], &g_config.cal[ch].slope, 4);
-                memcpy(&res[5], &g_config.cal[ch].intercept, 4);
-                res[9] = g_config.cal[ch].min_pulse >> 8;
-                res[10] = g_config.cal[ch].min_pulse & 0xFF;
-                res[11] = g_config.cal[ch].max_pulse >> 8;
-                res[12] = g_config.cal[ch].max_pulse & 0xFF;
-                Send_Packet(source_iface, source, g_config.device_id, RESP_CAL_DATA, res, 13);
+                memcpy(&res[1], &g_config.servo[ch].slope, 4);
+                memcpy(&res[5], &g_config.servo[ch].intercept, 4);
+                res[9] = g_config.servo[ch].min_pulse >> 8;
+                res[10] = g_config.servo[ch].min_pulse & 0xFF;
+                res[11] = g_config.servo[ch].max_pulse >> 8;
+                res[12] = g_config.servo[ch].max_pulse & 0xFF;
+                Send_Packet(source_iface, source, g_config.device.device_id, RESP_CAL_DATA, res, 13);
             }
             return ERR_OK;
         case 0x09: // Servo Free (PWM off) — ch_mask: bit0=CH0..bit3=CH3, no ACK
@@ -213,17 +219,17 @@ static uint8_t Execute(Interface_t source_iface, uint8_t source, uint8_t cmd, ui
             Servo_Free(data[0]);
             return ERR_OK;
         case 0xA0: // Ping (Device Discovery) — never answered with an error
-            if (g_config.role == ROLE_HOST && source_iface == IF_USB) {
+            if (g_config.device.role == ROLE_HOST && source_iface == IF_USB) {
                 // Host received discovery request from USB → broadcast into ring
                 App_Trigger_Discovery();
-            } else if (g_config.role == ROLE_DEVICE) {
+            } else if (g_config.device.role == ROLE_DEVICE) {
                 // Device received Ping → reply with own device_id
-                uint8_t id = g_config.device_id;
-                Send_Packet(source_iface, source, g_config.device_id, 0xA1, &id, 1);
+                uint8_t id = g_config.device.device_id;
+                Send_Packet(source_iface, source, g_config.device.device_id, 0xA1, &id, 1);
             }
             return ERR_OK;
         case 0xA1: // Pong (Discovery Response)
-            if (g_config.role == ROLE_HOST && len >= 1) {
+            if (g_config.device.role == ROLE_HOST && len >= 1) {
                 App_On_Pong(data[0]);
             }
             return ERR_OK;
@@ -292,7 +298,7 @@ void Process_Byte(Interface_t iface, uint8_t b) {
             break;
         case STATE_CRC:
             if (b == crc8(p->buf, p->len - 1)) {
-                if (p->target_id == g_config.device_id || p->target_id == BROADCAST_ID) {
+                if (p->target_id == g_config.device.device_id || p->target_id == BROADCAST_ID) {
                     Execute_Command(iface, p->target_id, p->source_id, p->cmd, &p->buf[PKT_DATA_OFFSET], p->expected_len);
                 } else {
                     Forward_Packet(iface, p->buf, p->len);

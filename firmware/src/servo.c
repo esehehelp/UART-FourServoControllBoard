@@ -3,8 +3,8 @@
 
 void Set_Servo(uint8_t idx, uint16_t pos) {
     if (idx >= 4) return;
-    if (pos < g_config.cal[idx].min_pulse) pos = g_config.cal[idx].min_pulse;
-    if (pos > g_config.cal[idx].max_pulse) pos = g_config.cal[idx].max_pulse;
+    if (pos < g_config.servo[idx].min_pulse) pos = g_config.servo[idx].min_pulse;
+    if (pos > g_config.servo[idx].max_pulse) pos = g_config.servo[idx].max_pulse;
     switch(idx) {
         case 0: TIM_SetCompare1(TIM2, pos); break;
         case 1: TIM_SetCompare2(TIM2, pos); break;
@@ -81,7 +81,13 @@ void Servo_Init(void) {
     TIM_CtrlPWMOutputs(TIM1, ENABLE);
     TIM_CtrlPWMOutputs(TIM2, ENABLE);
 
-    // 8. Start
+    // 8. Per-channel power-up pulse from the config (0 = PWM off, #27/#48).
+    //    Config_Load() runs before Servo_Init() (Protocol_Init in main.c).
+    for (uint8_t ch = 0; ch < 4; ch++) {
+        if (g_config.servo[ch].default_pulse) Set_Servo(ch, g_config.servo[ch].default_pulse);
+    }
+
+    // 9. Start
     TIM_Cmd(TIM1, ENABLE);
     TIM_Cmd(TIM2, ENABLE);
 }

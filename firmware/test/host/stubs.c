@@ -16,7 +16,7 @@ volatile uint16_t g_servo_feedback[4];
 void USB_PD_Request_Voltage(uint16_t mv){ pd_mv=mv; }
 void App_Trigger_Discovery(void){}
 void App_On_Pong(uint8_t id){ (void)id; }
-void Config_Load(void){ memset(&g_config,0,sizeof g_config); g_config.device_id=1; for(int i=0;i<4;i++){g_config.cal[i].min_pulse=500;g_config.cal[i].max_pulse=2500;} }
+void Config_Load(void){ memset(&g_config,0,sizeof g_config); g_config.device.device_id=1; for(int i=0;i<4;i++){g_config.servo[i].min_pulse=500;g_config.servo[i].max_pulse=2500;} }
 int Config_Save(void){ config_saves++; return flash_ok; }
 FlagStatus USART_GetFlagStatus(USART_TypeDef* u, uint16_t f){ (void)u;(void)f; return SET; }
 void USART_SendData(USART_TypeDef* u, uint16_t d){ int k = (u==USART2)?IF_UART2:IF_UART4; tx[k][txn[k]++]=(uint8_t)d; }
