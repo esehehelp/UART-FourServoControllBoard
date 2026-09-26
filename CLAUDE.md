@@ -41,12 +41,13 @@ React UI <-(Wails events)-- App <- Controller <- rx channel     <-
 ```
 
 - `config/config.go` — Protocol constants, command codes (0x01–0x09, 0xF0), max packet size, sensor scale factors (see firmware/docs/constants.md), Kalman filter and calibration parameters
-- `pkg/serial/manager.go` — Packet struct `[0xAA | Target | Source | TTL | Command | Length | Data... | CRC8]` with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07); port auto-detection (WCH VID first) and probing; receive goroutine feeding a buffered channel. `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
-- `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED(ch, duty)`, `SetPDVoltage`, `ServoFree`, `RequestSensorRead`); parses 0x82 sensor data, holds ring buffers and Kalman state, marks data invalid after `SENSOR_TIMEOUT_MS`
+- `pkg/serial/manager.go` — `ScanDevices()` / `SelectPort()` / `Connected()` (#29, probes with a broadcast target and reads name + FW version); Packet struct `[0xAA | Target | Source | TTL | Command | Length | Data... | CRC8]` with `Marshal()`/`Unmarshal()` and CRC8 (poly 0x07); port auto-detection (WCH VID first) and probing; receive goroutine feeding a buffered channel. `pkg/device/packet.go` only aliases these — do not duplicate the CRC logic
+- `pkg/device/controller.go` — High-level device API (`SetServo`, `SetLED(ch, duty)`, `SetPDVoltage`, `ServoFree`, `RequestSensorRead`); parses 0x82 sensor data, holds ring buffers and Kalman state, marks data invalid after `SENSOR_TIMEOUT_MS`. Commands target the ID the connected board answered with
+- `pkg/device/settings.go` — `ReadConfig`/`WriteConfig` (0x21/0x20), name, firmware version, protection settings
 - `pkg/data/ringbuffer.go` — Thread-safe ring buffer (RWMutex, capacity 100) + 1D Kalman filter implementation
 - `pkg/calibration/state_machine.go` — Manual position calibration: center → PWM off, user confirms min → user confirms max → compute slope/intercept → CMD 0x07 (floats little-endian)
 - `app.go` — Methods bound to JS and the ~30 FPS `sensor-data` / `plot-data` event loop; `status` / `cal-status` events
-- `frontend/src/` — React components: StatusBar, ServoControl (500–2500µs), LEDControl (LED1/LED2), PDControl (5/9/12V presets + custom, 5000–12000 mV, #38), CalibrationPanel, SensorGraph. `wails.ts` declares the bound Go methods — keep it in sync with `app.go`
+- `frontend/src/` — React components: StatusBar, DevicePanel (device select, name, protection settings), ServoControl (500–2500µs), LEDControl (LED1/LED2), PDControl (5/9/12V presets + custom, 5000–12000 mV, #38), CalibrationPanel, SensorGraph. `wails.ts` declares the bound Go methods — keep it in sync with `app.go`
 
 ### Concurrency Model
 
@@ -65,11 +66,12 @@ Packet header byte is `0xAA`. Key commands:
 - `0x07` Save calibration to flash
 - `0x08` Get calibration data
 - `0x09` Servo free (PWM off, channel mask)
+- `0x20` / `0x21` Config write / read by tag (name, default pulse, ranges, protection thresholds, FW version)
 - `0xA0` / `0xA1` Ping / Pong (ring-bus device discovery)
 - `0xF0` Enter DLM bootloader mode
 
 Max packet length is 128 bytes (7-byte framing, data ≤ 121). Packets carry a TTL (default 16) decremented per ring hop.
-Errors are reported as `0xEE [orig_cmd, error_code]` (codes: `firmware/src/error_codes.h` = `ErrCode*` in config.go); `0x04`/`0x06`/`0x07` are ACKed with `0x84`/`0x86`/`0x87`.
+Errors are reported as `0xEE [orig_cmd, error_code]` (codes: `firmware/src/error_codes.h` = `ErrCode*` in config.go); `0x20`(`0x04`)/`0x06`/`0x07` are ACKed with `0x84`/`0x86`/`0x87`; `0x21` answers `0x85`. Protection events use orig_cmd `0x00` plus a channel mask.
 Full spec: `firmware/docs/PROTOCOL.md`.
 
 Sensor response (`0x82`): 16-bit ADC values for voltage, temperature, current, and 4 feedback voltages.
@@ -124,6 +126,8 @@ Built with PlatformIO targeting CH32X035F7P6. Key source files in `firmware/src/
 - `adc.c/h` — Voltage (PA6), current (PA7, OPA2 PGA x32, 10mΩ shunt), NTC temp (PB1), servo feedback ADC
 - `UART.c/h` — Dual 1-Wire UART on USART2 (PA2) and USART4 (PA5) at 115200 bps
 - `usb_pd.c/h` — USB-PD voltage negotiation
-- `config.c/h` — Flash-backed configuration storage (one 256-byte page via `FLASH_ROM_ERASE`/`FLASH_ROM_WRITE`, CRC-32 verified on load)
+- `config.c/h` — Flash-backed configuration (#48: `DeviceConfig_t` / `ServoConfig_t[4]` / `ProtectionConfig_t`, layout version 2, one 256-byte page via `FLASH_ROM_ERASE`/`FLASH_ROM_WRITE`, CRC-32 + content validated on load, v1 images migrated). Stored image is read through `CONFIG_FLASH_PTR` so host tests can emulate the flash
+- `config_cmd.c/h` — tag-based config write/read, commands `0x20`/`0x21` (`0x04` is an alias of `0x20`)
+- `protection.c/h` — overcurrent / over-/undervoltage / overheat / stall protection, `Protection_Tick()` from the main loop; events are sent as `0xEE [0x00, code, ch_mask]`
 
 No RISC-V toolchain may be available; `gcc -fsyntax-only -Isrc -Ilib/Drivers/inc -DCH32X035 src/<file>.c` works as a host-side syntax check for most files.

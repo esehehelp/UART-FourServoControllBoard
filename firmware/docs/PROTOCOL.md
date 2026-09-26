@@ -1,6 +1,7 @@
-# UART Four Servo Control Board 通信プロトコル仕様 (v3.0)
+# UART Four Servo Control Board 通信プロトコル仕様 (v3.1)
 
 > v3.0 (FW/SW V0.8.0): TTL フィールド追加 (#13)、エラー応答 `0xEE` と ACK 追加 (#51, #52)。v2.x とはパケット形式に互換性がありません。
+> v3.1 (FW/SW V0.8.1): 設定の読み書き `0x20`/`0x21` (#49)、保護イベント通知 (#47, #28)、`ERR_OVERVOLTAGE`。v3.0 とパケット形式は同じで、追加のみです。
 
 ## 1. 物理層
 - **通信方式**: 1-Wire 半二重 UART (Ring Bus 構成)
@@ -45,20 +46,37 @@
 | `0x01–0x0F` | 汎用 | `0x01` / `0x02` / `0x03` / `0x04` | `ERR_UNKNOWN_CMD` / `ERR_BAD_LENGTH` / `ERR_BAD_CHANNEL` / `ERR_BAD_VALUE` |
 | `0x10–0x1F` | 通信 | `0x10` / `0x11` / `0x12` / `0x13` | `ERR_CRC` / `ERR_TIMEOUT` / `ERR_BUFFER_OVERFLOW` / `ERR_TTL_EXPIRED` |
 | `0x20–0x2F` | ハードウェア | `0x20` / `0x21` / `0x22` | `ERR_FLASH_WRITE` / `ERR_ADC` / `ERR_PWM` |
-| `0x30–0x3F` | 保護 (#47) | `0x30` / `0x31` / `0x32` / `0x33` | `ERR_OVERCURRENT` / `ERR_UNDERVOLTAGE` / `ERR_OVERHEAT` / `ERR_STALL` |
+| `0x30–0x3F` | 保護 (#47) | `0x30` / `0x31` / `0x32` / `0x33` / `0x34` | `ERR_OVERCURRENT` / `ERR_UNDERVOLTAGE` / `ERR_OVERHEAT` / `ERR_STALL` / `ERR_OVERVOLTAGE` |
 | `0x40–0x4F` | 設定 | `0x40` / `0x41` | `ERR_CONFIG_INVALID` / `ERR_CAL_INVALID` |
 | `0xF0–0xFF` | 予約 | — | — |
 
 定義: `firmware/src/error_codes.h` / `software/config/config.go` (`ErrCode*`)。
 
+### 保護イベント通知 (#47, #28)
+ボードが自ら検出した異常は、コマンドへの応答ではなく次の形式で通知されます (異常が起きたときに 1 回、解消するまで再通知しません)。
+
+- `0xEE` Data 3 bytes: `[0x00, error_code, ch_mask]` — `[0]` が `0x00` のとき保護イベント。`ch_mask` は PWM を停止したチャンネル (bit0=CH0)
+- 送信先: Target `0x00`。USB へ送信し、ROLE_DEVICE のボードはリング上流 (UART2) にも送信します
+
+| 機能 (feature bit) | 既定 | 条件 (10 ms 周期、3 回連続で確定) | 動作 |
+| :--- | :--- | :--- | :--- |
+| 過電流 `0x01` | 有効 | 全サーボ電流 > `max_current` (6000 mA) | 全 ch 停止 |
+| 低電圧 `0x02` | 無効 | 電源電圧 < `min_voltage` (4500 mV) | 全 ch 停止 |
+| 過電圧 `0x04` | 有効 | 電源電圧 > `max_voltage` (17500 mV) | 全 ch 停止、USB-PD を 5 V に戻す |
+| 過熱 `0x08` | 有効 | NTC 温度 > `max_temp` (80 °C)。NTC 開放/短絡時は判定しない | 全 ch 停止 |
+| ストール `0x10` | 無効 | キャリブレーション済みで駆動中の ch が、電流 > `stall_current` かつ目標から `stall_pos_error` 以上離れ、`stall_fb_delta` 未満しか動かない状態が `stall_time` (500 ms) 続く | その ch のみ停止 |
+
+過熱・低電圧・過電圧が続いている間、`0x01` / `0x03` はその保護エラーコードで拒否されます。閾値と有効/無効は `0x20` で変更できます。
+
 ### コマンドごとの応答
 
 | コマンド | 成功時 | 主なエラー |
 | :--- | :--- | :--- |
-| `0x01` Write Servo | なし | BAD_LENGTH, BAD_CHANNEL, BAD_VALUE (キャリブレーション範囲外) |
+| `0x01` Write Servo | なし | BAD_LENGTH, BAD_CHANNEL, BAD_VALUE (キャリブレーション範囲外), 保護エラー (異常継続中) |
 | `0x02` Read Sensors | `0x82` データ | BAD_LENGTH, BAD_VALUE (type ≠ 0) |
 | `0x03` SyncWrite | なし | BAD_LENGTH, BAD_VALUE (1 ch でも範囲外なら全 ch 不変) |
-| `0x04` CfgWrite | `0x84` `[sub_cmd]` | BAD_LENGTH, BAD_VALUE, FLASH_WRITE |
+| `0x20` Config Write (`0x04` も同じ) | `0x84` `[tag, (ch)]` | BAD_LENGTH, BAD_CHANNEL, BAD_VALUE, CONFIG_INVALID, FLASH_WRITE |
+| `0x21` Config Read | `0x85` `[tag, (ch), value...]` | BAD_LENGTH, BAD_CHANNEL, BAD_VALUE |
 | `0x30` LED Set | なし | BAD_LENGTH, BAD_CHANNEL |
 | `0x06` PD Voltage | `0x86` `[mv_h, mv_l]` | BAD_LENGTH, BAD_VALUE (5000–16800 mV 外) |
 | `0x07` Cal Save | `0x87` `[ch]` | BAD_LENGTH, BAD_CHANNEL, CAL_INVALID, FLASH_WRITE |
@@ -84,7 +102,7 @@ J3 のピン順に並べると **CH2 → CH1 → CH0 → CH3** となります (
 
 ### 0x01: Write (サーボ個別設定)
 特定のチャンネルのサーボパルス幅を設定します。
-電源投入直後は全チャンネルが PWM 停止 (出力 LOW、`0x09` と同じ状態) で、`0x01` / `0x03` を受信したチャンネルから駆動を開始します。
+電源投入直後は、チャンネルごとの `default_pulse` 設定 (既定 0 = PWM 停止、`0x09` と同じ状態) に従います。既定では `0x01` / `0x03` を受信したチャンネルから駆動を開始します。
 パルス幅がチャンネルごとのキャリブレーション範囲 (デフォルト 500-2500μs) の外なら `ERR_BAD_VALUE` を返し、サーボは動かしません。
 - **Data**: 3 bytes
   - `[0]`: Channel Index (0-3)
@@ -106,13 +124,36 @@ J3 のピン順に並べると **CH2 → CH1 → CH0 → CH3** となります (
 - **Data**: 8 bytes
   - `[0:1]`: CH0 Pulse, `[2:3]`: CH1 Pulse, `[4:5]`: CH2 Pulse, `[6:7]`: CH3 Pulse (all uint16)
 
-### 0x04: CfgWrite (システム設定)
-デバイス自体の設定を変更します。
-- **Sub-Commands**:
-  - `[0:1] = [0x01, NewID]`: デバイスIDを変更し、Flashに保存します。
-  - `[0:1] = [0x02, Role]`: デバイスのロールを変更し、Flashに保存します。
-- NewID に `0x00` (ホスト) / `0xFF` (ブロードキャスト)、Role に 0/1 以外は指定できません。
-- 成功時 `0x84` `[sub_cmd]` を返します。
+### 0x20: Config Write / 0x21: Config Read (設定の読み書き、#49)
+タグ番号で設定項目を 1 つずつ読み書きします。書き込みは検証後に Flash へ保存され、失敗時は何も変わりません。
+コマンド ID は #30 で確定した設定カテゴリ (`0x20`/`0x21`) を使用しています。応答 ID (`0x84`/`0x85`) は #30 の応答 ID 体系が決まるまでの暫定です。
+
+- **Write** `0x20`: `[tag, (ch), value...]` → `0x84` `[tag, (ch)]`
+- **Read** `0x21`: `[tag, (ch)]` → `0x85` `[tag, (ch), value...]`
+- `0x04` (旧 CfgWrite) は `0x20` の別名です。旧サブコマンド `0x01`/`0x02` はそれぞれタグ `0x01`/`0x02` と同じです。
+- `ch` はサーボ用タグ (`0x10–0x1F`) のみ。整数はビッグエンディアン。
+
+| タグ | 内容 | 型 | 制約 |
+| :--- | :--- | :--- | :--- |
+| `0x01` | device_id | u8 | `0x00` / `0xFF` 不可 |
+| `0x02` | role | u8 | 0 = DEVICE, 1 = HOST |
+| `0x03` | name (表示名, #29) | 0–15 bytes UTF-8 | NUL 不可 |
+| `0x10` | default_pulse [ch] (起動時パルス, #27) | u16 µs | 0 (PWM 停止) または min–max |
+| `0x11` / `0x12` | min_pulse / max_pulse [ch] | u16 µs | min < max |
+| `0x13` | calibrated [ch] | u8 | 読み出し専用 (`0x07` 保存で 1) |
+| `0x30` | 保護 feature_mask | u8 | `0x01` 過電流 / `0x02` 低電圧 / `0x04` 過電圧 / `0x08` 過熱 / `0x10` ストール |
+| `0x31` | max_current | u16 mA | |
+| `0x32` / `0x33` | min_voltage / max_voltage | u16 mV | min < max |
+| `0x34` | max_temp | i16 °C | |
+| `0x35` / `0x36` | stall_current / stall_time | u16 mA / ms | |
+| `0x37` / `0x38` | stall_fb_delta / stall_pos_error | u16 µs | |
+| `0xF0` | ファームウェアバージョン | `[major, minor, patch]` | 読み出し専用 |
+| `0xF1` | 設定レイアウトのバージョン | u8 | 読み出し専用 |
+
+設定は目的別の構造体 (Device / Servo×4 / Protection、#48) で Flash の 1 ページに保存されます。V0.8.0 の旧形式は起動時に自動で移行されます (ID・ロール・キャリブレーションを保持)。
+
+### 0x04: CfgWrite (旧 ID)
+`0x20` の別名です (上記参照)。`[0x01, NewID]` / `[0x02, Role]` は従来どおり使えます。
 
 ### ~~0x05: STATIC_LED~~ (廃止 → `0x30` に移行)
 
@@ -151,7 +192,7 @@ USB PD PPS対応電源を使用している場合、供給電圧を変更しま�
 - **Data**: 1 byte (ch_mask: bit0=CH0, bit1=CH1, bit2=CH2, bit3=CH3)
 
 ### 0xA0: Ping (デバイス探索要求)
-リングバス上のデバイスを探索します。動作は受信したボードのロール (`0x04` CfgWrite の Role) によって異なります。
+リングバス上のデバイスを探索します。動作は受信したボードのロール (`0x20` のタグ `0x02`) によって異なります。
 - **Data**: なし (0 bytes)
 - **ROLE_HOST (0x01) のボードが USB から受信した場合**:
   Target=`0xFF` (ブロードキャスト)、Source=自身のデバイスID で Ping を UART2 (リング下流) **のみ**へ送信し、100 ms の探索ウィンドウを開始します。
