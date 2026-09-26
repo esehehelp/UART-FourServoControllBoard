@@ -18,6 +18,7 @@ MAX_DATA_LEN = MAX_PACKET_LEN - OVERHEAD
 
 RESP_SENSOR_DATA = 0x82
 RESP_CFG_ACK = 0x84
+RESP_CFG_DATA = 0x85
 RESP_PD_ACK = 0x86
 RESP_CAL_ACK = 0x87
 RESP_CAL_DATA = 0x88
@@ -41,6 +42,7 @@ ERROR_NAMES = {
     0x31: "UNDERVOLTAGE",
     0x32: "OVERHEAT",
     0x33: "STALL",
+    0x34: "OVERVOLTAGE",
     0x40: "CONFIG_INVALID",
     0x41: "CAL_INVALID",
 }
@@ -126,7 +128,19 @@ def read_packet(ser, want_cmds, timeout=1.0):
     return None
 
 
+CMD_CONFIG_WRITE = 0x20
+CMD_CONFIG_READ = 0x21
+
+
 def error_text(pkt):
-    """Human-readable text for a RESP_ERROR packet dict."""
+    """Human-readable text for a RESP_ERROR packet dict.
+
+    orig_cmd 0x00 marks a protection event raised by the board; the third
+    byte is then the affected channel mask.
+    """
     cmd, code = pkt["data"][0], pkt["data"][1]
-    return f"cmd 0x{cmd:02X}: {ERROR_NAMES.get(code, 'unknown')} (0x{code:02X})"
+    name = ERROR_NAMES.get(code, "unknown")
+    if cmd == 0x00:
+        mask = pkt["data"][2] if len(pkt["data"]) > 2 else 0
+        return f"protection: {name} (0x{code:02X}), channels 0x{mask:X}"
+    return f"cmd 0x{cmd:02X}: {name} (0x{code:02X})"

@@ -1,5 +1,6 @@
 // Bridge to Wails runtime and Go bindings.
 // These globals are injected by the Wails webview at runtime.
+import type { DeviceInfo, DeviceState, ProtectionSettings } from './types'
 
 declare global {
   interface Window {
@@ -12,6 +13,12 @@ declare global {
           StartCalibration(ch: number): Promise<void>
           StopCalibration(): Promise<void>
           ConfirmCalibrationPosition(): Promise<void>
+          ListDevices(): Promise<DeviceInfo[]>
+          SelectDevice(port: string): Promise<void>
+          GetDeviceState(): Promise<DeviceState>
+          SetDeviceName(name: string): Promise<void>
+          GetProtection(): Promise<ProtectionSettings>
+          SetProtection(p: ProtectionSettings): Promise<void>
         }
       }
     }
@@ -33,6 +40,12 @@ export const SetPDVoltage = (mv: number) => g()?.SetPDVoltage(mv)
 export const StartCalibration = (ch: number) => g()?.StartCalibration(ch)
 export const StopCalibration = () => g()?.StopCalibration()
 export const ConfirmCalibrationPosition = () => g()?.ConfirmCalibrationPosition()
+export const ListDevices = () => g()?.ListDevices()
+export const SelectDevice = (port: string) => g()?.SelectDevice(port)
+export const GetDeviceState = () => g()?.GetDeviceState()
+export const SetDeviceName = (name: string) => g()?.SetDeviceName(name)
+export const GetProtection = () => g()?.GetProtection()
+export const SetProtection = (p: ProtectionSettings) => g()?.SetProtection(p)
 
 export const EventsOn = (event: string, cb: (...data: unknown[]) => void) =>
   rt()?.EventsOn(event, cb)

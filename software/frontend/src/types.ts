@@ -25,6 +25,42 @@ export interface DeviceErrorEvent {
   msg: string
 }
 
+// Keep in sync with serial.DeviceInfo (Go)
+export interface DeviceInfo {
+  port: string
+  id: number
+  name: string
+  fwVersion: string
+}
+
+export interface DeviceState {
+  connected: boolean
+  device: DeviceInfo
+  selected: string
+}
+
+// Keep in sync with device.ProtectionSettings (Go)
+export interface ProtectionSettings {
+  featureMask: number
+  maxCurrentMA: number
+  minVoltageMV: number
+  maxVoltageMV: number
+  maxTempC: number
+  stallCurrentMA: number
+  stallTimeMS: number
+  stallFBDelta: number
+  stallPosError: number
+}
+
+// Protection feature bits (config.PROT_*)
+export const Prot = {
+  Overcurrent: 0x01,
+  Undervoltage: 0x02,
+  Overvoltage: 0x04,
+  Overheat: 0x08,
+  Stall: 0x10,
+} as const
+
 export interface CalStatusEvent {
   state: number
   msg: string

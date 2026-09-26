@@ -159,3 +159,47 @@ func (a *App) StopCalibration() {
 func (a *App) ConfirmCalibrationPosition() error {
 	return a.cal.Confirm()
 }
+
+// ---- Devices and board settings (#29, #47, #49) ----
+
+// DeviceState is the connection shown in the device panel
+type DeviceState struct {
+	Connected bool              `json:"connected"`
+	Device    serial.DeviceInfo `json:"device"`
+	Selected  string            `json:"selected"` // "" = auto
+}
+
+// ListDevices scans all serial ports for boards (the connected one included)
+func (a *App) ListDevices() ([]serial.DeviceInfo, error) {
+	return a.sm.ScanDevices()
+}
+
+// SelectDevice connects to the board on port ("" = first board found)
+func (a *App) SelectDevice(port string) {
+	a.sm.SelectPort(port)
+}
+
+// GetDeviceState returns the current connection
+func (a *App) GetDeviceState() DeviceState {
+	info, ok := a.sm.Connected()
+	return DeviceState{Connected: ok, Device: info, Selected: a.sm.Selected()}
+}
+
+// SetDeviceName stores a label (max 15 bytes) on the connected board
+func (a *App) SetDeviceName(name string) error {
+	if err := a.ctrl.SetName(name); err != nil {
+		return err
+	}
+	a.sm.SetConnectedName(name)
+	return nil
+}
+
+// GetProtection reads the protection settings of the connected board
+func (a *App) GetProtection() (device.ProtectionSettings, error) {
+	return a.ctrl.GetProtection()
+}
+
+// SetProtection writes changed protection settings to the connected board
+func (a *App) SetProtection(p device.ProtectionSettings) error {
+	return a.ctrl.SetProtection(p)
+}

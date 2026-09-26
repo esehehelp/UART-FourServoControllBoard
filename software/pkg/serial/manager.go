@@ -6,6 +6,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -112,9 +113,30 @@ func (p *Packet) String() string {
 	return fmt.Sprintf("Pkt{Tgt:0x%02x, Src:0x%02x, TTL:%d, Cmd:0x%02x, Len:%d, CRC:0x%02x}", p.Target, p.Source, p.TTL, p.Cmd, len(p.Data), p.CRC)
 }
 
+// DeviceInfo describes a board found on a serial port (#29)
+type DeviceInfo struct {
+	Port      string `json:"port"`
+	ID        uint8  `json:"id"`        // device ID the board answered with
+	Name      string `json:"name"`      // user label (empty if unset or old firmware)
+	FWVersion string `json:"fwVersion"` // e.g. "0.8.1" (empty for old firmware)
+}
+
+// Label is the text shown in the UI: "Name [ID:0x01]" or "Device-01 [ID:0x01]"
+func (d DeviceInfo) Label() string {
+	name := d.Name
+	if name == "" {
+		name = fmt.Sprintf("Device-%02X", d.ID)
+	}
+	return fmt.Sprintf("%s [ID:0x%02X]", name, d.ID)
+}
+
 // Manager handles serial communication
 type Manager struct {
+	mu       sync.Mutex // guards port, info, selected
 	port     io.ReadWriteCloser
+	info     DeviceInfo // board on port
+	selected string     // port chosen by the user; "" = auto (first board found)
+	probeMu  sync.Mutex // one probe/scan at a time
 	rxChan   chan *Packet
 	errChan  chan error
 	done     chan struct{}
@@ -146,9 +168,77 @@ func (m *Manager) Start() {
 // Stop gracefully stops the manager
 func (m *Manager) Stop() {
 	close(m.done)
+	m.mu.Lock()
 	if m.port != nil {
 		m.port.Close()
 	}
+	m.mu.Unlock()
+}
+
+// Connected returns the board currently connected, if any.
+func (m *Manager) Connected() (DeviceInfo, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.info, m.port != nil
+}
+
+// SetConnectedName updates the cached name after it was changed on the board.
+func (m *Manager) SetConnectedName(name string) {
+	m.mu.Lock()
+	m.info.Name = name
+	m.mu.Unlock()
+}
+
+// SelectPort makes the manager use only portName ("" = auto-select the first
+// board found). A connection to a different port is closed; the worker loop
+// then connects to the selected port.
+func (m *Manager) SelectPort(portName string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.selected = portName
+	if m.port != nil && portName != "" && m.info.Port != portName {
+		m.port.Close() // the worker sees the read error and reconnects
+		m.port = nil
+	}
+}
+
+// Selected returns the port chosen with SelectPort ("" = auto).
+func (m *Manager) Selected() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.selected
+}
+
+// ScanDevices lists every board that answers on any serial port (#29). The
+// connected board is reported from the current connection, other ports are
+// probed briefly and closed again.
+func (m *Manager) ScanDevices() ([]DeviceInfo, error) {
+	ports, err := listPorts()
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(ports, func(i, j int) bool {
+		return portPriority(ports[i]) > portPriority(ports[j])
+	})
+
+	m.probeMu.Lock()
+	defer m.probeMu.Unlock()
+
+	cur, connected := m.Connected()
+	var found []DeviceInfo
+	if connected {
+		found = append(found, cur)
+	}
+	for _, p := range ports {
+		if connected && p.Name == cur.Port {
+			continue
+		}
+		if port, info := probePort(p.Name, serialMode()); port != nil {
+			port.Close()
+			found = append(found, info)
+		}
+	}
+	return found, nil
 }
 
 // RxChan returns the receive channel
@@ -169,24 +259,26 @@ func (m *Manager) ErrChan() <-chan error {
 
 // Send transmits a packet
 func (m *Manager) Send(pkt *Packet) error {
-	if m.port == nil {
-		return fmt.Errorf("serial port not connected")
-	}
 	if len(pkt.Data) > config.MAX_DATA_LEN {
 		return fmt.Errorf("packet data too long: %d bytes (max %d)", len(pkt.Data), config.MAX_DATA_LEN)
 	}
-
-	data := pkt.Marshal()
-	_, err := m.port.Write(data)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.port == nil {
+		return fmt.Errorf("serial port not connected")
+	}
+	_, err := m.port.Write(pkt.Marshal())
 	return err
 }
 
 // workerLoop continuously tries to connect and read packets
 func (m *Manager) workerLoop() {
 	defer func() {
+		m.mu.Lock()
 		if m.port != nil {
 			m.port.Close()
 		}
+		m.mu.Unlock()
 		close(m.rxChan)
 	}()
 
@@ -203,7 +295,11 @@ func (m *Manager) workerLoop() {
 		}
 
 		// Try to connect if not connected
-		if m.port == nil {
+		m.mu.Lock()
+		port := m.port
+		m.mu.Unlock()
+		if port == nil {
+			buffer = buffer[:0]
 			select {
 			case <-scanTicker.C:
 				m.tryConnect()
@@ -216,12 +312,16 @@ func (m *Manager) workerLoop() {
 
 		// Try to read data
 		tempBuf := make([]uint8, 64)
-		n, err := m.port.Read(tempBuf)
+		n, err := port.Read(tempBuf)
 
 		if err != nil {
 			log.Printf("Read error: %v", err)
-			m.port.Close()
-			m.port = nil
+			port.Close()
+			m.mu.Lock()
+			if m.port == port { // not already replaced by SelectPort
+				m.port = nil
+			}
+			m.mu.Unlock()
 			m.updateStatus("Connection lost", "red")
 			continue
 		}
@@ -316,22 +416,42 @@ func (m *Manager) tryConnect() {
 		return portPriority(ports[i]) > portPriority(ports[j])
 	})
 
-	mode := &goserial.Mode{
+	selected := m.Selected()
+	if selected != "" {
+		m.updateStatus(fmt.Sprintf("Waiting for %s...", selected), "orange")
+	} else {
+		m.updateStatus("Scanning...", "orange")
+	}
+
+	m.probeMu.Lock()
+	defer m.probeMu.Unlock()
+	for _, p := range ports {
+		if selected != "" && p.Name != selected {
+			continue
+		}
+		if port, info := probePort(p.Name, serialMode()); port != nil {
+			m.mu.Lock()
+			if m.selected != "" && m.selected != info.Port { // selection changed meanwhile
+				m.mu.Unlock()
+				port.Close()
+				return
+			}
+			m.port = port
+			m.info = info
+			m.mu.Unlock()
+			log.Printf("Connected to %s (%s)", info.Port, info.Label())
+			m.updateStatus(fmt.Sprintf("Connected: %s — %s", info.Port, info.Label()), "green")
+			return
+		}
+	}
+}
+
+func serialMode() *goserial.Mode {
+	return &goserial.Mode{
 		BaudRate: config.DEFAULT_BAUD,
 		DataBits: 8,
 		Parity:   goserial.NoParity,
 		StopBits: goserial.OneStopBit,
-	}
-
-	m.updateStatus("Scanning...", "orange")
-
-	for _, p := range ports {
-		if portName, port := m.probePort(p.Name, mode); port != nil {
-			m.port = port
-			log.Printf("Connected to %s", portName)
-			m.updateStatus(fmt.Sprintf("Connected: %s", portName), "green")
-			return
-		}
 	}
 }
 
@@ -377,67 +497,100 @@ func portPriority(p *enumerator.PortDetails) int {
 	}
 }
 
-// probePort opens portName, sends CMD_SENSOR_READ, and waits up to 300 ms
-// for a RESP_SENSOR_DATA reply. Returns the open port on success, nil on failure.
-func (m *Manager) probePort(portName string, mode *goserial.Mode) (string, goserial.Port) {
+// probePort opens portName and asks for sensor data with a broadcast target,
+// so a board answers whatever its device ID is (broadcasts are executed by
+// the USB-connected board and never forwarded into the ring). On success it
+// also reads the board's name and firmware version (#29) and returns the
+// open port; otherwise nil.
+func probePort(portName string, mode *goserial.Mode) (goserial.Port, DeviceInfo) {
+	info := DeviceInfo{Port: portName}
 	port, err := goserial.Open(portName, mode)
 	if err != nil {
-		return portName, nil
+		return nil, info
 	}
-
-	// Send probe packet
-	probe := NewPacket(config.DEVICE_ID, config.CMD_SENSOR_READ, []uint8{config.SENSOR_TYPE_ALL})
-	if _, err := port.Write(probe.Marshal()); err != nil {
-		port.Close()
-		return portName, nil
-	}
-
-	// Read with 50 ms per-call timeout; total budget 300 ms
+	// Read with 50 ms per-call timeout while probing
 	if err := port.SetReadTimeout(50 * time.Millisecond); err != nil {
 		port.Close()
-		return portName, nil
+		return nil, info
 	}
 
-	buf := make([]uint8, 64)
-	rxBuf := make([]uint8, 0, 64)
-	deadline := time.Now().Add(300 * time.Millisecond)
+	probe := NewPacket(config.BROADCAST_ID, config.CMD_SENSOR_READ, []uint8{config.SENSOR_TYPE_ALL})
+	resp := request(port, probe, 300*time.Millisecond, func(p *Packet) bool { return p.Cmd == config.RESP_SENSOR_DATA })
+	if resp == nil {
+		port.Close()
+		return nil, info
+	}
+	info.ID = resp.Source
 
+	// Optional details; firmware before 0.8.1 answers with an error
+	isCfg := func(tag uint8) func(*Packet) bool {
+		return func(p *Packet) bool {
+			return (p.Cmd == config.RESP_CFG_DATA && len(p.Data) >= 1 && p.Data[0] == tag) ||
+				(p.Cmd == config.RESP_ERROR && len(p.Data) >= 1 && p.Data[0] == config.CMD_CONFIG_READ)
+		}
+	}
+	if r := request(port, NewPacket(info.ID, config.CMD_CONFIG_READ, []uint8{config.CFG_TAG_NAME}), 200*time.Millisecond, isCfg(config.CFG_TAG_NAME)); r != nil && r.Cmd == config.RESP_CFG_DATA {
+		info.Name = string(r.Data[1:])
+	}
+	if r := request(port, NewPacket(info.ID, config.CMD_CONFIG_READ, []uint8{config.CFG_TAG_FW_VERSION}), 200*time.Millisecond, isCfg(config.CFG_TAG_FW_VERSION)); r != nil && r.Cmd == config.RESP_CFG_DATA && len(r.Data) >= 4 {
+		info.FWVersion = fmt.Sprintf("%d.%d.%d", r.Data[1], r.Data[2], r.Data[3])
+	}
+
+	// Disable per-call read timeout for normal operation
+	_ = port.SetReadTimeout(0)
+	return port, info
+}
+
+// request writes pkt and reads until a packet matching want arrives or the
+// timeout expires.
+func request(port io.ReadWriter, pkt *Packet, timeout time.Duration, want func(*Packet) bool) *Packet {
+	if _, err := port.Write(pkt.Marshal()); err != nil {
+		return nil
+	}
+	buf := make([]uint8, 64)
+	rxBuf := make([]uint8, 0, 128)
+	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		n, _ := port.Read(buf)
-		if n > 0 {
-			rxBuf = append(rxBuf, buf[:n]...)
-			if pkt := findPacket(rxBuf); pkt != nil && pkt.Cmd == config.RESP_SENSOR_DATA {
-				// Disable per-call read timeout for normal operation
-				_ = port.SetReadTimeout(0)
-				return portName, port
+		if n == 0 {
+			continue
+		}
+		rxBuf = append(rxBuf, buf[:n]...)
+		for {
+			pkt, rest := nextPacket(rxBuf)
+			rxBuf = rest
+			if pkt == nil {
+				break
+			}
+			if want(pkt) {
+				return pkt
 			}
 		}
 	}
-
-	port.Close()
-	return portName, nil
+	return nil
 }
 
-// findPacket scans buf for a complete, CRC-valid packet and returns it.
-func findPacket(buf []uint8) *Packet {
-	for i := 0; i < len(buf); i++ {
-		if buf[i] != config.PKT_HEADER {
+// nextPacket removes the first complete, CRC-valid packet from buf.
+// Returns nil and the remaining bytes if no complete packet is available.
+func nextPacket(buf []uint8) (*Packet, []uint8) {
+	for len(buf) > 0 {
+		if buf[0] != config.PKT_HEADER {
+			buf = buf[1:]
 			continue
 		}
-		if len(buf)-i < config.PKT_OVERHEAD {
-			break
+		if len(buf) < config.PKT_OVERHEAD {
+			return nil, buf
 		}
-		dataLen := int(buf[i+5])
-		end := i + config.PKT_OVERHEAD + dataLen
+		end := config.PKT_OVERHEAD + int(buf[5])
 		if len(buf) < end {
-			break
+			return nil, buf
 		}
-		pkt, err := Unmarshal(buf[i:end])
-		if err == nil {
-			return pkt
+		if pkt, err := Unmarshal(buf[:end]); err == nil {
+			return pkt, buf[end:]
 		}
+		buf = buf[1:]
 	}
-	return nil
+	return nil, buf
 }
 
 // updateStatus calls the status callback

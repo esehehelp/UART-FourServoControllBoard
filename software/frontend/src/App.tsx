@@ -4,6 +4,7 @@ import LEDControl from './components/LEDControl'
 import PDControl from './components/PDControl'
 import SensorGraph from './components/SensorGraph'
 import CalibrationPanel from './components/CalibrationPanel'
+import DevicePanel from './components/DevicePanel'
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
       <StatusBar />
       <div className="app-main">
         <div className="left-panel">
+          <DevicePanel />
           <LEDControl />
           <PDControl />
           <ServoControl />

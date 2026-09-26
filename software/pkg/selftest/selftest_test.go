@@ -60,6 +60,15 @@ func (f *fakeBoard) Write(b []uint8) (int, error) {
 		if mv := uint16(d[0])<<8 | uint16(d[1]); mv > 16800 {
 			f.fail(pkt.Cmd, config.ErrCodeBadValue)
 		}
+	case config.CMD_CONFIG_READ:
+		if f.legacy {
+			break // old firmware has no 0x21 and never answers errors
+		}
+		if d[0] == config.CFG_TAG_FW_VERSION {
+			f.reply(config.RESP_CFG_DATA, []uint8{d[0], 0, 8, 1})
+		} else {
+			f.fail(pkt.Cmd, config.ErrCodeBadValue)
+		}
 	case config.CMD_CAL_SAVE:
 		f.fail(pkt.Cmd, config.ErrCodeCalInvalid)
 	default:
@@ -97,8 +106,9 @@ func TestSelftestDetectsMissingErrorResponses(t *testing.T) {
 			failed++
 		}
 	}
-	// the five "-> ERR_*" checks must fail against firmware without #51
-	if failed != 5 {
-		t.Errorf("failed checks = %d, want 5", failed)
+	// the five "-> ERR_*" checks and the config read (added in 0.8.1) must
+	// fail against firmware without #51 / #49
+	if failed != 6 {
+		t.Errorf("failed checks = %d, want 6", failed)
 	}
 }

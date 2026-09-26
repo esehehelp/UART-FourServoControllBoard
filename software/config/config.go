@@ -21,7 +21,7 @@ const (
 // Software version (#39). Major.Minor follow the hardware revision (V0.8);
 // HW / FW / SW compatibility is recorded in PRs and release notes.
 const (
-	SOFTWARE_VERSION  = "0.8.0"
+	SOFTWARE_VERSION  = "0.8.1"
 	HARDWARE_REVISION = "V0.8"
 )
 
@@ -31,6 +31,8 @@ const USB_VID_WCH = "1A86"
 
 // Device IDs
 const (
+	// DEVICE_ID is the factory default ID. The GUI talks to the ID the
+	// connected board answered with (serial.DeviceInfo.ID).
 	DEVICE_ID = 0x01
 )
 
@@ -39,7 +41,9 @@ const (
 	CMD_SERVO_WRITE      = 0x01 // Write servo position [ch, duty_h, duty_l]
 	CMD_SENSOR_READ      = 0x02 // Read sensors [type]
 	CMD_SYNC_WRITE       = 0x03 // Sync write all servos
-	CMD_CONFIG_WRITE     = 0x04 // Config write
+	CMD_CONFIG_WRITE_OLD = 0x04 // Config write, legacy ID (alias of CMD_CONFIG_WRITE)
+	CMD_CONFIG_WRITE     = 0x20 // Config write [tag, (ch), value...] -> RESP_CFG_ACK (#49)
+	CMD_CONFIG_READ      = 0x21 // Config read [tag, (ch)] -> RESP_CFG_DATA (#49)
 	CMD_LED_SET          = 0x30 // Set LED duty [ch: 0=LED1,1=LED2, duty: 0-255]
 	CMD_PD_VOLTAGE       = 0x06 // Set PD voltage [mv_h, mv_l] -> RESP_PD_ACK
 	CMD_CAL_SAVE         = 0x07 // Save calibration [ch, slope(4B), intercept(4B), min_h, min_l, max_h, max_l]
@@ -55,7 +59,8 @@ const (
 // Response codes
 const (
 	RESP_SENSOR_DATA = 0x82
-	RESP_CFG_ACK     = 0x84 // [sub_cmd]
+	RESP_CFG_ACK     = 0x84 // [tag, (ch)]
+	RESP_CFG_DATA    = 0x85 // [tag, (ch), value...]
 	RESP_PD_ACK      = 0x86 // [mv_h, mv_l]
 	RESP_CAL_ACK     = 0x87 // [ch]
 	RESP_CAL_DATA    = 0x88
@@ -81,6 +86,7 @@ const (
 	ErrCodeUndervoltage   = 0x31
 	ErrCodeOverheat       = 0x32
 	ErrCodeStall          = 0x33
+	ErrCodeOvervoltage    = 0x34
 	ErrCodeConfigInvalid  = 0x40
 	ErrCodeCalInvalid     = 0x41
 )
@@ -103,9 +109,44 @@ var ErrCodeNames = map[uint8]string{
 	ErrCodeUndervoltage:   "undervoltage",
 	ErrCodeOverheat:       "overheat",
 	ErrCodeStall:          "stall",
+	ErrCodeOvervoltage:    "overvoltage",
 	ErrCodeConfigInvalid:  "invalid config",
 	ErrCodeCalInvalid:     "invalid calibration",
 }
+
+// Config tags for CMD_CONFIG_WRITE / CMD_CONFIG_READ (#49). Keep in sync with
+// firmware/src/config_cmd.h. Tags 0x10-0x1F carry a channel byte.
+const (
+	CFG_TAG_DEVICE_ID       = 0x01 // u8
+	CFG_TAG_ROLE            = 0x02 // u8
+	CFG_TAG_NAME            = 0x03 // 0-15 bytes UTF-8
+	CFG_TAG_DEFAULT_PULSE   = 0x10 // [ch] u16 us, 0 = PWM off at power-up
+	CFG_TAG_MIN_PULSE       = 0x11 // [ch] u16 us
+	CFG_TAG_MAX_PULSE       = 0x12 // [ch] u16 us
+	CFG_TAG_CALIBRATED      = 0x13 // [ch] u8, read-only
+	CFG_TAG_PROT_MASK       = 0x30 // u8, PROT_* bits
+	CFG_TAG_MAX_CURRENT     = 0x31 // u16 mA
+	CFG_TAG_MIN_VOLTAGE     = 0x32 // u16 mV
+	CFG_TAG_MAX_VOLTAGE     = 0x33 // u16 mV
+	CFG_TAG_MAX_TEMP        = 0x34 // i16 degC
+	CFG_TAG_STALL_CURRENT   = 0x35 // u16 mA
+	CFG_TAG_STALL_TIME      = 0x36 // u16 ms
+	CFG_TAG_STALL_FB_DELTA  = 0x37 // u16 us
+	CFG_TAG_STALL_POS_ERROR = 0x38 // u16 us
+	CFG_TAG_FW_VERSION      = 0xF0 // [major, minor, patch], read-only
+	CFG_TAG_CONFIG_VERSION  = 0xF1 // u8, read-only
+
+	DEVICE_NAME_MAX = 15 // bytes
+)
+
+// Protection feature bits (CFG_TAG_PROT_MASK, #47/#28)
+const (
+	PROT_OVERCURRENT  = 0x01
+	PROT_UNDERVOLTAGE = 0x02
+	PROT_OVERVOLTAGE  = 0x04
+	PROT_OVERHEAT     = 0x08
+	PROT_STALL        = 0x10
+)
 
 // ACK_TIMEOUT_MS: how long commands that expect an ACK (0x04, 0x06, 0x07)
 // wait for RESP_*_ACK or RESP_ERROR

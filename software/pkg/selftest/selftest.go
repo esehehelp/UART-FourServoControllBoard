@@ -42,6 +42,7 @@ func (r *Runner) Run() []Result {
 	}{
 		{"sensor read (0x02 -> 0x82)", r.checkSensors},
 		{"calibration read CH0-3 (0x08 -> 0x88)", r.checkCalibration},
+		{"config read FW version (0x21 -> 0x85)", r.checkConfigRead},
 		{"LED1/LED2 on/off (0x30)", r.checkLED},
 		{"bad LED channel -> ERR_BAD_CHANNEL", r.expectError(config.CMD_LED_SET, []uint8{5, 0}, config.ErrCodeBadChannel)},
 		{"retired 0x05 -> ERR_UNKNOWN_CMD", r.expectError(0x05, []uint8{0}, config.ErrCodeUnknownCmd)},
@@ -194,6 +195,21 @@ func (r *Runner) checkCalibration() error {
 		if minP >= maxP {
 			return fmt.Errorf("CH%d: min %d >= max %d", ch, minP, maxP)
 		}
+	}
+	return nil
+}
+
+// checkConfigRead reads the firmware version tag (#49)
+func (r *Runner) checkConfigRead() error {
+	pkt, err := r.request(config.CMD_CONFIG_READ, []uint8{config.CFG_TAG_FW_VERSION}, config.RESP_CFG_DATA)
+	if err != nil {
+		return err
+	}
+	if pkt.Cmd != config.RESP_CFG_DATA {
+		return fmt.Errorf("%s", describeError(pkt))
+	}
+	if len(pkt.Data) != 4 || pkt.Data[0] != config.CFG_TAG_FW_VERSION {
+		return fmt.Errorf("malformed version response % X", pkt.Data)
 	}
 	return nil
 }

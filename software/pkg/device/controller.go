@@ -48,24 +48,54 @@ type Controller struct {
 }
 
 // DeviceError is an error response (RESP_ERROR) reported by the firmware.
+// Cmd 0x00 means the board raised it on its own (protection, #47/#28);
+// Detail then holds the affected channel mask.
 type DeviceError struct {
-	Cmd  uint8 // command that failed
-	Code uint8 // error code (config.ErrCode*)
+	Cmd    uint8 // command that failed, 0x00 for protection events
+	Code   uint8 // error code (config.ErrCode*)
+	Detail uint8 // channel mask for protection events
 }
+
+// IsProtection reports whether the board raised this error by itself.
+func (e *DeviceError) IsProtection() bool { return e.Cmd == 0x00 }
 
 func (e *DeviceError) Error() string {
 	name, ok := config.ErrCodeNames[e.Code]
 	if !ok {
 		name = "unknown error"
 	}
+	if e.IsProtection() {
+		return fmt.Sprintf("protection: %s (0x%02X), servos freed: %s", name, e.Code, channelList(e.Detail))
+	}
 	return fmt.Sprintf("device error on cmd 0x%02X: %s (0x%02X)", e.Cmd, name, e.Code)
 }
 
-// ackWaiter is a command waiting for its ACK or error response
+func channelList(mask uint8) string {
+	s := ""
+	for ch := 0; ch < 4; ch++ {
+		if mask&(1<<ch) != 0 {
+			if s != "" {
+				s += ","
+			}
+			s += fmt.Sprintf("CH%d", ch)
+		}
+	}
+	if s == "" {
+		return "none"
+	}
+	return s
+}
+
+// ackWaiter is a command waiting for its response or an error for reqCmd
 type ackWaiter struct {
 	reqCmd uint8
-	ackCmd uint8
-	result chan error
+	match  func(*serial.Packet) bool
+	result chan waitResult
+}
+
+type waitResult struct {
+	pkt *serial.Packet
+	err error
 }
 
 // NewController creates a new device controller
@@ -99,6 +129,17 @@ func (c *Controller) SetErrorHandler(f func(*DeviceError)) {
 	c.pmu.Unlock()
 }
 
+// target is the device ID commands are sent to: the ID the connected board
+// answered with, or the factory default.
+func (c *Controller) target() uint8 {
+	if c.sm != nil {
+		if info, ok := c.sm.Connected(); ok {
+			return info.ID
+		}
+	}
+	return config.DEVICE_ID
+}
+
 func (c *Controller) send(pkt *serial.Packet) error {
 	if c.sendFn != nil {
 		return c.sendFn(pkt)
@@ -109,20 +150,27 @@ func (c *Controller) send(pkt *serial.Packet) error {
 // sendWithAck sends pkt and waits for ackCmd, a RESP_ERROR for pkt.Cmd
 // (returned as *DeviceError) or ACK_TIMEOUT_MS.
 func (c *Controller) sendWithAck(pkt *serial.Packet, ackCmd uint8) error {
-	w := &ackWaiter{reqCmd: pkt.Cmd, ackCmd: ackCmd, result: make(chan error, 1)}
+	_, err := c.sendAndWait(pkt, func(r *serial.Packet) bool { return r.Cmd == ackCmd })
+	return err
+}
+
+// sendAndWait sends pkt and returns the first response accepted by match,
+// a *DeviceError if the board rejects pkt.Cmd, or a timeout error.
+func (c *Controller) sendAndWait(pkt *serial.Packet, match func(*serial.Packet) bool) (*serial.Packet, error) {
+	w := &ackWaiter{reqCmd: pkt.Cmd, match: match, result: make(chan waitResult, 1)}
 	c.pmu.Lock()
 	c.pending = append(c.pending, w)
 	c.pmu.Unlock()
 	defer c.removeWaiter(w)
 
 	if err := c.send(pkt); err != nil {
-		return err
+		return nil, err
 	}
 	select {
-	case err := <-w.result:
-		return err
+	case r := <-w.result:
+		return r.pkt, r.err
 	case <-time.After(time.Duration(config.ACK_TIMEOUT_MS) * time.Millisecond):
-		return fmt.Errorf("no response to cmd 0x%02X within %d ms", pkt.Cmd, config.ACK_TIMEOUT_MS)
+		return nil, fmt.Errorf("no response to cmd 0x%02X within %d ms", pkt.Cmd, config.ACK_TIMEOUT_MS)
 	}
 }
 
@@ -137,14 +185,14 @@ func (c *Controller) removeWaiter(w *ackWaiter) {
 	}
 }
 
-// resolveWaiter completes the oldest waiter matching match(); false if none.
-func (c *Controller) resolveWaiter(match func(*ackWaiter) bool, err error) bool {
+// resolveWaiter completes the oldest waiter accepted by match; false if none.
+func (c *Controller) resolveWaiter(match func(*ackWaiter) bool, res waitResult) bool {
 	c.pmu.Lock()
 	defer c.pmu.Unlock()
 	for i, p := range c.pending {
 		if match(p) {
 			c.pending = append(c.pending[:i], c.pending[i+1:]...)
-			p.result <- err
+			p.result <- res
 			return true
 		}
 	}
@@ -188,13 +236,13 @@ func (c *Controller) SetServo(ch uint8, microseconds uint16) error {
 	}
 
 	data := []uint8{ch, uint8(microseconds >> 8), uint8(microseconds & 0xFF)}
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_SERVO_WRITE, data)
+	pkt := serial.NewPacket(c.target(), config.CMD_SERVO_WRITE, data)
 	return c.send(pkt)
 }
 
 // SetLED sends LED control command (ch: 0=LED1, 1=LED2; duty: 0-255)
 func (c *Controller) SetLED(ch, duty uint8) error {
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_LED_SET, []uint8{ch, duty})
+	pkt := serial.NewPacket(c.target(), config.CMD_LED_SET, []uint8{ch, duty})
 	return c.send(pkt)
 }
 
@@ -206,27 +254,27 @@ func (c *Controller) SetPDVoltage(millivolts uint16) error {
 			millivolts, config.PD_VOLTAGE_MIN, config.PD_VOLTAGE_MAX_UI)
 	}
 	data := []uint8{uint8(millivolts >> 8), uint8(millivolts & 0xFF)}
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_PD_VOLTAGE, data)
+	pkt := serial.NewPacket(c.target(), config.CMD_PD_VOLTAGE, data)
 	return c.sendWithAck(pkt, config.RESP_PD_ACK)
 }
 
 // RequestSensorRead requests sensor data
 func (c *Controller) RequestSensorRead() error {
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_SENSOR_READ, []uint8{config.SENSOR_TYPE_ALL})
+	pkt := serial.NewPacket(c.target(), config.CMD_SENSOR_READ, []uint8{config.SENSOR_TYPE_ALL})
 	return c.send(pkt)
 }
 
 // RequestCalibrationSave sends calibration save command and waits until the
 // device confirms the flash write (RESP_CAL_ACK) or reports an error.
 func (c *Controller) RequestCalibrationSave(data []uint8) error {
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_CAL_SAVE, data)
+	pkt := serial.NewPacket(c.target(), config.CMD_CAL_SAVE, data)
 	return c.sendWithAck(pkt, config.RESP_CAL_ACK)
 }
 
 // ServoFree disables PWM output for channels specified by chMask (bit0=CH0..bit3=CH3).
 // The servo becomes limp. Call SetServo to re-engage.
 func (c *Controller) ServoFree(chMask uint8) error {
-	pkt := serial.NewPacket(config.DEVICE_ID, config.CMD_SERVO_FREE, []uint8{chMask})
+	pkt := serial.NewPacket(c.target(), config.CMD_SERVO_FREE, []uint8{chMask})
 	return c.send(pkt)
 }
 
@@ -282,14 +330,16 @@ func (c *Controller) processPacket(pkt *serial.Packet, startTime time.Time) {
 	switch pkt.Cmd {
 	case config.RESP_SENSOR_DATA:
 		c.processSensorData(pkt, startTime)
-	case config.RESP_CFG_ACK, config.RESP_PD_ACK, config.RESP_CAL_ACK:
-		c.resolveWaiter(func(w *ackWaiter) bool { return w.ackCmd == pkt.Cmd }, nil)
 	case config.RESP_ERROR:
 		if len(pkt.Data) < 2 {
 			return
 		}
 		devErr := &DeviceError{Cmd: pkt.Data[0], Code: pkt.Data[1]}
-		if c.resolveWaiter(func(w *ackWaiter) bool { return w.reqCmd == devErr.Cmd }, devErr) {
+		if len(pkt.Data) >= 3 {
+			devErr.Detail = pkt.Data[2]
+		}
+		if !devErr.IsProtection() &&
+			c.resolveWaiter(func(w *ackWaiter) bool { return w.reqCmd == devErr.Cmd }, waitResult{err: devErr}) {
 			return
 		}
 		log.Printf("%v", devErr)
@@ -299,6 +349,8 @@ func (c *Controller) processPacket(pkt *serial.Packet, startTime time.Time) {
 		if onError != nil {
 			onError(devErr)
 		}
+	default:
+		c.resolveWaiter(func(w *ackWaiter) bool { return w.match(pkt) }, waitResult{pkt: pkt})
 	}
 }
 
